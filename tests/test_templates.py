@@ -26,9 +26,8 @@ class TestParseFieldPath:
     def test_valid(self, ref, path):
         assert parse_field_path(ref) == path
 
-    # Module d'origine (#40) : seules ces formes sont refusées ; « a[b] », « [] »
-    # et « a] » sont lus comme des noms de champ littéraux (écart avec Logstash, voir l'issue de suivi).
-    @pytest.mark.parametrize("ref", ["", "  ", "[a][b", "[a]x[b]"])
+    # Issue #49 : « a[b] », « [] », « a] » et « [a[b]] » sont refusés, comme par Logstash.
+    @pytest.mark.parametrize("ref", ["", "  ", "[a][b", "[a]x[b]", "a[b]", "[]", "a]", "[a][]", "[a[b]]"])
     def test_invalid(self, ref):
         with pytest.raises(ValueError):
             parse_field_path(ref)
@@ -57,10 +56,22 @@ class TestRenderTemplate:
         assert render_template("%{hostname}-%{[host][ip]}", DOC) == "sw01-10.0.0.1"
 
     def test_value_formatting(self):
-        # Comportement du module d'origine (#40), différent de Logstash (true, core,lab, JSON) : issue de suivi
-        assert render_template("%{count}|%{up}|%{nothing}", DOC) == "3|True|"
-        assert render_template("%{[host][tags]}", DOC) == "['core', 'lab']"
-        assert render_template("%{host}", DOC) == "{'ip': '10.0.0.1', 'tags': ['core', 'lab']}"
+        """Issue #49 : rendu identique à StringInterpolation de Logstash 8."""
+        assert render_template("%{count}|%{up}|%{nothing}", DOC) == "3|true|"
+        assert render_template("%{[host][tags]}", DOC) == "core,lab"
+        assert render_template("%{host}", DOC) == '{"ip":"10.0.0.1","tags":["core","lab"]}'
+
+    def test_value_formatting_edge_cases(self):
+        doc = {"off": False, "mix": [1, None, True, ["a", "b"]], "vide": [], "e": {"n": "é"}, "pi": 1.5}
+        assert render_template("%{off}", doc) == "false"
+        assert render_template("%{mix}", doc) == "1,,true,a,b"
+        assert render_template("x%{vide}x", doc) == "xx"
+        assert render_template("%{e}", doc) == '{"n":"é"}'
+        assert render_template("%{pi}", doc) == "1.5"
+
+    def test_malformed_reference_raises(self):
+        with pytest.raises(ValueError, match="mal formé"):
+            render_template("%{a[b]}", DOC)
 
     def test_without_reference(self):
         assert render_template("texte fixe", DOC) == "texte fixe"
