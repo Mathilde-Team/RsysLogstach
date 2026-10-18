@@ -53,6 +53,7 @@ Limites assumées (voir FEATURES.md) :
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -181,6 +182,11 @@ def parse_field_path(expr: str) -> list[str]:
     if not expr:
         raise ValueError("référence de champ vide: %{}")
     if not expr.startswith("["):
+        # Issue #49 : comme Logstash (FieldReference strict), un nom simple
+        # ne contient aucun crochet — « a[b] » ou « a] » est une référence
+        # invalide, pas un nom de champ littéral.
+        if "[" in expr or "]" in expr:
+            raise ValueError(f"chemin de champ mal formé (crochet dans un nom simple): {expr!r}")
         return [expr]
     segments: list[str] = []
     rest = expr
@@ -190,7 +196,11 @@ def parse_field_path(expr: str) -> list[str]:
         end = rest.find("]")
         if end == -1:
             raise ValueError(f"crochet non refermé dans le chemin de champ: {expr!r}")
-        segments.append(rest[1:end])
+        segment = rest[1:end]
+        if not segment or "[" in segment:
+            # « [] » (segment vide) et « [a[b]] » (crochets imbriqués) : refusés par Logstash.
+            raise ValueError(f"chemin de champ mal formé (segment vide ou imbriqué): {expr!r}")
+        segments.append(segment)
         rest = rest[end + 1 :]
     return segments
 
@@ -319,6 +329,29 @@ def _render_field(inner: str, event: dict[str, Any], on_missing: str) -> str:
         return f"%{{{inner}}}" if on_missing == "keep" else ""
     if value is None:
         return ""
+    return _logstash_string(value)
+
+
+def _logstash_string(value: Any) -> str:
+    """Convertit une valeur de champ en texte comme `StringInterpolation` de Logstash 8.
+
+    Issue #49, d'après la source de Logstash (logstash-core,
+    `StringInterpolation.evaluate` et `KeyNode.join`) :
+        - liste : éléments joints par « , » ; élément `null` → « » ; liste
+          imbriquée aplatie avec le même séparateur ;
+        - objet (dict) : JSON compact (Jackson : pas d'espace) ;
+        - booléen : `true` / `false` (Java `Boolean.toString`) ;
+        - autre : `str()`.
+    Écart assumé : un objet DANS une liste est rendu en JSON (Logstash
+    appelle le `toString()` Java de la map, « {ip=1.2.3.4} », qui n'est
+    ni du JSON ni stable).
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (list, tuple)):
+        return ",".join("" if item is None else _logstash_string(item) for item in value)
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
     return str(value)
 
 
