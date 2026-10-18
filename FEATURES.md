@@ -60,7 +60,7 @@
 ## Limites connues
 
 ### DLQ (dlq.py)
-- Rotation/purge disponibles dans `dlq.py` (issue #27) ; options `--dlq-*` à câbler dans `omprog.py` une fois le module importé (#25/#40)
+- Rotation/purge : options `--dlq-max-size`, `--dlq-max-age`, `--dlq-backups`, `--dlq-retention`, `--dlq-no-compress` de `omprog.py` (issue #27)
 
 ### Fingerprint (fingerprint.py)
 - Pas de mode HMAC (nécessiterait une clé secrète)
@@ -69,8 +69,16 @@
 - Voir issue #28
 
 ### Templates (templates.py)
-- Champ `null` traité comme absent (se rend en chaîne vide)
-- Voir issue #29
+- Rendu des valeurs aligné sur Logstash 8 (`StringInterpolation`, issue #49) : booléen `true`/`false`, liste jointe par `,`, objet en JSON compact
+- **Changement de comportement (#49)** : un `document_id`, un nom d'index ou une empreinte construit à partir d'un booléen (`True` → `true`), d'une liste (`['a', 'b']` → `a,b`) ou d'un objet (repr Python → JSON) change de valeur — à signaler dans les notes de version (doublons possibles dans OpenSearch pour les documents déjà indexés avec l'ancien rendu)
+- Références mal formées refusées (`ValueError`) comme par Logstash : `a[b]`, `a]`, `[]`, `[a[b]]`
+- Écart assumé : un objet à l'intérieur d'une liste est rendu en JSON (Logstash utilise le `toString()` Java de la map)
+- Champ `null` rendu en chaîne vide ; Logstash le traite comme un champ absent (voir issue #29)
+
+### Point d'entrée (omprog.py)
+- Reconstruit en 2026 (issue #40) : le fichier d'origine n'a pas été retrouvé
+- Sorties `output{}` honorées : `opensearch` et `elasticsearch` (`index`, `document_id`) ; `hosts` du pipeline ignoré (nœuds de `--opensearch-host`)
+- `${VAR}` des pipelines `.conf` non substitués (variables d'environnement Logstash)
 
 ### Indexer (indexer.py)
 - Réponse du serveur aux redirections (imprimante/série/parallèle) traitée côté serveur, jamais remontée à l'API
@@ -81,7 +89,6 @@
 |------|----------|-------|
 | Pousser les modules manquants | P0 | #25 |
 | Écrire le README | P1 | #26 |
-| DLQ rotation/purge — options CLI dans omprog.py | P3 | #27 |
 | Fingerprint HMAC/MURMUR3 | P3 | #28 |
 | Templates null vs absent | P2 | #29 |
 | Test d'intégration bout en bout | P2 | #30 |
