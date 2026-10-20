@@ -160,6 +160,21 @@ export OPENSEARCH_USER=admin
 export OPENSEARCH_PASSWORD=secret
 ```
 
+### Identifiant de document (`_id`)
+
+Deux mécanismes produisent un `_id` déterministe (idempotence : la
+ré-émission d'un document l'écrase au lieu de le dupliquer) :
+
+| Mécanisme | Option | Cas d'usage |
+|-----------|--------|-------------|
+| **Gabarit** | `--document-id-template "%{[event_id]}"` | Le document possède un champ identifiant naturel (n° d'événement, clé unique) — lisible et traçable dans OpenSearch |
+| **Fingerprint** | `--document-id-fingerprint "host,seq"` (ou `*` pour le document entier) | Aucun champ identifiant naturel — hash du contenu (`sha256` par défaut, `--fingerprint-method` pour `sha1`/`md5`), comme le filtre `fingerprint` de Logstash |
+
+Les deux peuvent être configurés **simultanément** (issue #33) : le
+fingerprint est alors prioritaire — ils ne sont jamais combinés dans un
+même `_id`. Ni l'un ni l'autre (défaut), ou rendu vide pour un document :
+OpenSearch génère un `_id` aléatoire (comportement historique).
+
 ## Tests
 
 ```bash

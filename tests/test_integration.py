@@ -208,6 +208,61 @@ class TestFingerprintIdempotence:
         ids = {call[2] for call in fake.calls}
         assert len(ids) == 2
 
+    def test_gabarit_seul_genere_l_id(self, tmp_path: Path) -> None:
+        """--document-id-template seul : le gabarit %{...} rendu sert de _id."""
+        parser_argv = [
+            "--opensearch-host",
+            "https://localhost:9200",
+            "--no-verify-certs",
+            "--log-level",
+            "ERROR",
+            "--dlq-path",
+            str(tmp_path / "dlq.jsonl"),
+            "--document-id-template",
+            "%{hostname}",
+        ]
+        from omprog import build_bridge, build_parser
+
+        args = build_parser().parse_args(parser_argv)
+        bridge = build_bridge(args)
+        fake = FakeOpenSearchClient()
+        bridge.indexer._client = fake
+        asyncio.run(bridge.handle_line(json.dumps({"hostname": "sw01", "message": "x"})))
+        asyncio.run(bridge.close())
+        assert fake.calls[0][2] == "sw01"
+
+    def test_fingerprint_prioritaire_sur_gabarit(self, tmp_path: Path) -> None:
+        """Les deux configurés (issue #33) : le fingerprint gagne — jamais
+        combinés dans un même _id, mais simultané autorisé."""
+        parser_argv = [
+            "--opensearch-host",
+            "https://localhost:9200",
+            "--no-verify-certs",
+            "--log-level",
+            "ERROR",
+            "--dlq-path",
+            str(tmp_path / "dlq.jsonl"),
+            "--document-id-template",
+            "%{hostname}",
+            "--document-id-fingerprint",
+            "hostname",
+        ]
+        from omprog import build_bridge, build_parser
+
+        args = build_parser().parse_args(parser_argv)
+        bridge = build_bridge(args)
+        fake = FakeOpenSearchClient()
+        bridge.indexer._client = fake
+        doc = {"hostname": "sw01", "message": "x"}
+        asyncio.run(bridge.handle_line(json.dumps(doc)))
+        asyncio.run(bridge.close())
+        # L'_id est l'empreinte sha256 du champ, pas le gabarit « sw01 ».
+        from fingerprint import compute_fingerprint
+
+        expected = compute_fingerprint(doc, ["hostname"], "sha256")
+        assert fake.calls[0][2] == expected
+        assert fake.calls[0][2] != "sw01"
+
 
 class TestPipelineConf:
     def test_output_conf_surcharge_index(self, tmp_path: Path) -> None:
