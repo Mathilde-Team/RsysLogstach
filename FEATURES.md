@@ -87,10 +87,14 @@
 
 | Item | Priorité | Issue |
 |------|----------|-------|
-| Pousser les modules manquants | P0 | #25 |
-| Écrire le README | P1 | #26 |
 | Fingerprint HMAC/MURMUR3 | P3 | #28 |
 | Templates null vs absent | P2 | #29 |
 | Test d'intégration bout en bout | P2 | #30 |
 | Packaging package installable | P3 | #31 |
-| Pousser fichiers de suivi | P0 | #32 |
+| `--document-id-template` (complément du fingerprint) | P3 | #33 |
+| Filtres Logstash avancés (date, grok) | P3 | #34 |
+| Métriques et monitoring (Prometheus/Grafana) | P3 | #35 |
+| Multi-cluster OpenSearch (failover) | P2 | #37 |
+| Internationalisation complète | — | #38 |
+
+Terminé : #25 (modules manquants + tests), #26 (README), #32 (fichiers de suivi).
