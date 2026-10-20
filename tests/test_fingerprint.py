@@ -78,9 +78,28 @@ class TestSelectedFieldsFingerprint:
         result = compute_fingerprint({"hostname": "sw01"}, ["hostname", "nonexistent"])
         assert result is not None
 
-    def test_null_field_value_treated_like_missing(self) -> None:
-        """Un champ présent mais `null` se rend en chaîne vide (limite héritée de templates.py)."""
-        assert compute_fingerprint({"hostname": None}, ["hostname"]) is None
+    def test_null_field_counts_as_present(self) -> None:
+        """Champ présent mais `null` : compte comme présent (décision #29).
+
+        L'empreinte est celle du contenu vide (hash de ""), pas `None` —
+        distinct d'un champ absent, qui seul exclut le champ.
+        """
+        result = compute_fingerprint({"hostname": None}, ["hostname"])
+        assert result is not None
+        assert result == compute_fingerprint({"hostname": ""}, ["hostname"])
+
+    def test_null_and_absent_produce_different_outcomes(self) -> None:
+        """Tout-null → empreinte ; tout-absent → `None` (distinction #29)."""
+        all_null = compute_fingerprint({"a": None, "b": None}, ["a", "b"])
+        all_absent = compute_fingerprint({"c": 1}, ["a", "b"])
+        assert all_null is not None
+        assert all_absent is None
+
+    def test_null_field_joins_with_separator(self) -> None:
+        """Null + valeur : le null contribue un segment vide au payload."""
+        mixed = compute_fingerprint({"a": None, "b": "x"}, ["a", "b"])
+        present = compute_fingerprint({"a": "", "b": "x"}, ["a", "b"])
+        assert mixed == present
 
 
 class TestHashMethod:
