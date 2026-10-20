@@ -174,10 +174,13 @@ class OpenSearchIndexer:
     def _document_id(self, doc: dict) -> str | None:
         """Calcule l'`_id` statique de `doc` : fingerprint si configuré, sinon gabarit, sinon None.
 
-        Priorité (session 17) : `document_id_fingerprint_fields` d'abord
-        (si non `None`, même une liste vide), sinon `document_id_template`
-        — les deux ne sont jamais combinés, voir la docstring de la
-        classe. Ni l'un ni l'autre configuré, ou empreinte/gabarit rendu
+        Priorité (session 17, explicitée par l'issue #33) :
+        `document_id_fingerprint_fields` d'abord (si non `None`, même une
+        liste vide), sinon `document_id_template`. Configurer les deux à
+        la fois est AUTORISÉ (le fingerprint est alors prioritaire — un
+        gabarit peut servir de repli en changeant de configuration, sans
+        rien retirer) ; les deux ne sont jamais combinés dans un MÊME
+        `_id`. Ni l'un ni l'autre configuré, ou empreinte/gabarit rendu
         vide pour CE document : `None` (retombe sur un `_id` aléatoire).
         """
         if self._document_id_fingerprint_fields is not None:
