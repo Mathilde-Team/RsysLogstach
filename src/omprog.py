@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import signal
 import sys
 from collections.abc import Awaitable, Callable
@@ -132,7 +133,18 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="CHAMPS",
         help="_id par empreinte : champs séparés par des virgules, ou « * » pour le document entier",
     )
-    g.add_argument("--fingerprint-method", choices=("sha256", "sha1", "md5"), default="sha256")
+    g.add_argument(
+        "--fingerprint-method",
+        choices=("sha256", "sha1", "md5", "murmur3"),
+        default="sha256",
+        help="Algorithme de l'empreinte (défaut : sha256 ; murmur3 : entier 32 bits, non cryptographique)",
+    )
+    g.add_argument(
+        "--fingerprint-key",
+        metavar="CLÉ",
+        default=None,
+        help="Mode HMAC de l'empreinte (issue #28) ; à défaut, variable d'environnement FINGERPRINT_KEY",
+    )
 
     g = parser.add_argument_group("dead letter queue (issue #27)")
     g.add_argument("--dlq-path", metavar="JSONL", help="Fichier DLQ des échecs permanents")
@@ -324,6 +336,9 @@ def build_bridge(args: argparse.Namespace, *, indexer_factory: Callable[..., Any
         dlq=dlq,
         document_id_fingerprint_fields=fingerprint_fields,
         document_id_fingerprint_method=args.fingerprint_method,
+        document_id_fingerprint_key=(
+            args.fingerprint_key if args.fingerprint_key is not None else os.environ.get("FINGERPRINT_KEY")
+        ),
     )
     return Bridge(
         indexer=indexer,

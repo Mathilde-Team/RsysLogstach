@@ -10,6 +10,7 @@ dependencies = [
     "maxminddb",
     "pyyaml",
     "logstash-pipeline-parser==0.0.3",
+    "mmh3",
 ]
 
 [project.scripts]

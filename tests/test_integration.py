@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pytest
 from opensearchpy.exceptions import OpenSearchException, RequestError
 
 from indexer import OpenSearchIndexer, SendOutcome
@@ -262,6 +263,84 @@ class TestFingerprintIdempotence:
         expected = compute_fingerprint(doc, ["hostname"], "sha256")
         assert fake.calls[0][2] == expected
         assert fake.calls[0][2] != "sw01"
+
+    def test_hmac_via_option_et_via_env(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Issue #28 : --fingerprint-key OU repli FINGERPRINT_KEY — le _id est
+        un HMAC (différent du hash simple, différent par clé)."""
+        from omprog import build_bridge, build_parser
+
+        def make(argv: list[str]) -> tuple[Any, FakeOpenSearchClient]:
+            args = build_parser().parse_args(
+                [
+                    "--opensearch-host",
+                    "https://localhost:9200",
+                    "--no-verify-certs",
+                    "--log-level",
+                    "ERROR",
+                    "--dlq-path",
+                    str(tmp_path / "dlq.jsonl"),
+                    "--document-id-fingerprint",
+                    "hostname",
+                    *argv,
+                ]
+            )
+            bridge = build_bridge(args)
+            fake = FakeOpenSearchClient()
+            bridge.indexer._client = fake
+            return bridge, fake
+
+        doc = {"hostname": "sw01", "message": "x"}
+        # 1. Clé via l'option CLI.
+        bridge, fake = make(["--fingerprint-key", "cle-option"])
+        asyncio.run(bridge.handle_line(json.dumps(doc)))
+        asyncio.run(bridge.close())
+        with_option = fake.calls[0][2]
+        # 2. Clé via la variable d'environnement (repli).
+        monkeypatch.setenv("FINGERPRINT_KEY", "cle-env")
+        bridge, fake = make([])
+        asyncio.run(bridge.handle_line(json.dumps(doc)))
+        asyncio.run(bridge.close())
+        with_env = fake.calls[0][2]
+        # 3. Sans clé : hash simple.
+        monkeypatch.delenv("FINGERPRINT_KEY")
+        bridge, fake = make([])
+        asyncio.run(bridge.handle_line(json.dumps(doc)))
+        asyncio.run(bridge.close())
+        sans_cle = fake.calls[0][2]
+
+        from fingerprint import compute_fingerprint
+
+        assert with_option == compute_fingerprint(doc, ["hostname"], "sha256", key="cle-option")
+        assert with_env == compute_fingerprint(doc, ["hostname"], "sha256", key="cle-env")
+        assert sans_cle == compute_fingerprint(doc, ["hostname"], "sha256")
+        assert len({with_option, with_env, sans_cle}) == 3
+
+    def test_murmur3_via_cli(self, tmp_path: Path) -> None:
+        """Issue #28 : --fingerprint-method murmur3 → _id entier décimal."""
+        from omprog import build_bridge, build_parser
+
+        args = build_parser().parse_args(
+            [
+                "--opensearch-host",
+                "https://localhost:9200",
+                "--no-verify-certs",
+                "--log-level",
+                "ERROR",
+                "--dlq-path",
+                str(tmp_path / "dlq.jsonl"),
+                "--document-id-fingerprint",
+                "hostname",
+                "--fingerprint-method",
+                "murmur3",
+            ]
+        )
+        bridge = build_bridge(args)
+        fake = FakeOpenSearchClient()
+        bridge.indexer._client = fake
+        asyncio.run(bridge.handle_line(json.dumps({"hostname": "sw01", "message": "x"})))
+        asyncio.run(bridge.close())
+        doc_id = fake.calls[0][2]
+        assert doc_id is not None and doc_id.isdigit()
 
 
 class TestPipelineConf:
