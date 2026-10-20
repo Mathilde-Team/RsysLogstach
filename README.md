@@ -130,6 +130,8 @@ par ordre de nom comme le fait Logstash. Seules les sorties `opensearch` et
 toujours vers les nœuds de `--opensearch-host`.
 `PYTHONPATH=src python3 src/omprog.py --help` donne la liste complète.
 
+**Multi-nœuds et failover (#37)** : `--opensearch-host` est répétable ; le transport opensearch-py retente le nœud suivant en cas d'échec de connexion ou de délai (`retry_on_timeout`), et un health check périodique journalise l'état du cluster (`--health-check-interval`, défaut 300 s, 0 = désactivé).
+
 ### Rotation de la DLQ (issue #27)
 
 `LocalDeadLetterQueue` sait rotater et purger son fichier JSONL ; tout est
@@ -163,8 +165,8 @@ uv run ruff check src/ tests/
 ## Suivi
 
 - **Sessions :** Issues #1–#24 (fermées)
-- **Fait depuis :** #25 (modules + tests), #26 (ce README), #32 (fichiers de suivi)
-- **Travaux restants :** Issues #28–#31, #33–#35, #37, #38 (liste à jour dans les issues du dépôt et le backlog de FEATURES.md)
+- **Fait depuis :** #25 (modules + tests), #26 (ce README), #29 (null vs absent), #30 (intégration), #32 (fichiers de suivi), #37 (failover + health check)
+- **Travaux restants :** Issues #28, #31, #33–#35, #38 (liste à jour dans les issues du dépôt et le backlog de FEATURES.md)
 - **FEATURES.md :** Statut des fonctionnalités et backlog
 - **PATTERNS.md :** Conventions et patterns
 - **CLAUDE.md :** Contexte projet et historique

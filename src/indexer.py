@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime, timezone
+from typing import Any
 
 from loguru import logger
 from opensearchpy import AsyncOpenSearch
@@ -140,6 +141,10 @@ class OpenSearchIndexer:
         self._document_id_fingerprint_fields = document_id_fingerprint_fields
         self._document_id_fingerprint_method = document_id_fingerprint_method
         self._dlq = dlq
+        # Failover multi-nœuds (issue #37) : le transport opensearch-py
+        # retente le nœud suivant en cas d'échec de connexion. `retry_on_timeout`
+        # étend ce repli aux délais d'attente (défaut de la bibliothèque :
+        # False — un timeout ne basculait PAS sur le nœud suivant).
         self._client = AsyncOpenSearch(
             hosts=hosts,
             http_auth=auth,
@@ -147,7 +152,18 @@ class OpenSearchIndexer:
             verify_certs=verify_certs,
             ssl_show_warn=False,
             timeout=OPENSEARCH_TIMEOUT,
+            retry_on_timeout=True,
         )
+
+    @traced
+    async def health(self) -> dict[str, Any]:
+        """Interroge le cluster (GET /) : sa version, ou lève l'erreur.
+
+        Utilisé par le health check périodique d'omprog (issue #37). Le
+        failover d'un nœud à l'autre, lui, est géré par le transport
+        opensearch-py à chaque requête (voir `__init__`).
+        """
+        return await self._client.info()
 
     @traced
     def _current_index(self) -> str:
