@@ -18,19 +18,23 @@ aléatoire (une entrée en double par ré-émission) ou d'un champ pivot que
 les logs HPE Comware qui motivent ce projet ne fournissent pas toujours.
 
 Portée volontairement réduite par rapport au filtre `fingerprint` officiel
-de Logstash (voir FEATURES.md, "Limites connues") : seuls des algorithmes de
-hachage simples et non salés sont couverts (`sha256`/`sha1`/`md5`, module
-`hashlib` de la bibliothèque standard) — pas de mode HMAC (nécessiterait une
-clé secrète de configuration, hors de portée d'une empreinte de
-déduplication plutôt que d'authentification), ni `MURMUR3` (entier 32 bits,
-format d'`_id` différent d'un hex digest), ni `IPV4_NETWORK` (portée trop
-spécifique à un cas d'usage réseau que rsyslogstach ne rencontre pas ici).
+de Logstash (voir FEATURES.md, "Limites connues") : algorithmes couverts
+`sha256`/`sha1`/`md5` (`hashlib`), plus `MURMUR3` (issue #28 : entier 32
+bits non signé en décimal via `mmh3`, non cryptographique — déduplication
+seulement) et le mode HMAC (issue #28 : clé secrète, `--fingerprint-key`
+ou variable d'environnement `FINGERPRINT_KEY` — empreinte dépendant du
+déploiement). Restent exclus : `IPV4_NETWORK` (portée trop spécifique à un
+cas d'usage réseau que rsyslogstach ne rencontre pas ici) et le HMAC
+MURMUR3 (comme le filtre Logstash, qui ne le propose pas non plus).
 """
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+
+import mmh3
 
 from templates import _MISSING, parse_field_path, render_template, resolve_field
 from tracing import traced
@@ -41,6 +45,11 @@ _HASH_FACTORIES = {
     "md5": hashlib.md5,
 }
 
+# MURMUR3 (issue #28) : hash non cryptographique 32 bits très rapide —
+# comme le filtre `fingerprint` de Logstash. Format `_id` DIFFÉRENT d'un
+# hex digest : l'entier non signé en décimal (str(int)).
+_MURMUR3_METHOD = "murmur3"
+
 # Séparateur entre les valeurs de champs concaténées avant hachage — un
 # caractère de contrôle improbable dans un log réel (unit separator ASCII),
 # pour éviter qu'une simple concaténation ne fasse se confondre deux
@@ -50,8 +59,10 @@ _FIELD_SEPARATOR = "\x1f"
 
 
 @traced
-def compute_fingerprint(doc: dict, fields: list[str] | None, method: str = "sha256") -> str | None:
-    """Calcule une empreinte déterministe (hex digest) d'un document.
+def compute_fingerprint(
+    doc: dict, fields: list[str] | None, method: str = "sha256", key: str | None = None
+) -> str | None:
+    """Calcule une empreinte déterministe d'un document (hex digest, ou entier pour MURMUR3).
 
     Args:
         doc: Document à empreindre.
@@ -65,12 +76,20 @@ def compute_fingerprint(doc: dict, fields: list[str] | None, method: str = "sha2
             vide : empreinte du document ENTIER (JSON à clés triées, forme
             canonique — indépendante de l'ordre d'insertion des clés en
             Python), pas d'une sélection de champs.
-        method: Algorithme de hachage (`sha256` par défaut, `sha1`, `md5`
-            — voir les limites documentées dans la docstring du module).
+        method: Algorithme de hachage (`sha256` par défaut, `sha1`, `md5`,
+            ou `murmur3` — entier 32 bits non signé en décimal, NON
+            cryptographique : déduplication seulement ; voir la docstring
+            du module).
+        key: Clé secrète du mode HMAC (issue #28) : si fournie,
+            `hmac.new(key, payload, method)` au lieu du hash simple —
+            l'empreinte dépend alors de la clé (deux déploiements avec des
+            clés différentes produisent des `_id` incomparables). `None`
+            (défaut) : comportement historique sans clé. Ignorée pour
+            `murmur3` (pas de HMAC MURMUR3, comme le filtre Logstash).
 
     Returns:
-        Le hex digest (chaîne hexadécimale), ou `None` si TOUS les champs
-        demandés sont absents du document — une empreinte sans aucune
+        Le hex digest (chaîne hexadécimale ; entier décimal pour
+            `murmur3`), ou `None` si TOUS les champs demandés sont absents du document — une empreinte sans aucune
         valeur distinctive n'aurait pas de sens, même convention que
         `templates.render` pour un gabarit qui rend une chaîne vide (voir
         `OpenSearchIndexer._document_id`). Un champ présent mais `null` est
@@ -84,8 +103,8 @@ def compute_fingerprint(doc: dict, fields: list[str] | None, method: str = "sha2
         ValueError: `method` non reconnu.
     """
     factory = _HASH_FACTORIES.get(method)
-    if factory is None:
-        msg = f"méthode de fingerprint inconnue: {method!r} (attendu: {sorted(_HASH_FACTORIES)})"
+    if factory is None and method != _MURMUR3_METHOD:
+        msg = f"méthode de fingerprint inconnue: {method!r} (attendu: {sorted([*_HASH_FACTORIES, _MURMUR3_METHOD])})"
         raise ValueError(msg)
 
     if not fields:
@@ -104,4 +123,14 @@ def compute_fingerprint(doc: dict, fields: list[str] | None, method: str = "sha2
             return None
         payload = _FIELD_SEPARATOR.join(rendered)
 
+    if method == _MURMUR3_METHOD:
+        # Entier 32 bits non signé, en décimal — format `_id` différent
+        # d'un hex digest (comme le filtre `fingerprint` de Logstash).
+        # MURMUR3 n'est PAS cryptographique : déduplication seulement.
+        return str(mmh3.hash(payload.encode("utf-8"), signed=False))
+    if key is not None:
+        # Mode HMAC (issue #28) : l'empreinte dépend d'une clé secrète —
+        # deux déploiements avec des clés différentes produisent des `_id`
+        # incomparables (empreinte "signée").
+        return hmac.new(key.encode("utf-8"), payload.encode("utf-8"), factory).hexdigest()
     return factory(payload.encode("utf-8")).hexdigest()
