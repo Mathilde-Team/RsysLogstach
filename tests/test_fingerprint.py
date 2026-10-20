@@ -121,5 +121,76 @@ class TestHashMethod:
         assert len(result) == 32
 
     def test_unknown_method_raises_value_error(self) -> None:
+        # « murmur3 » est valide depuis l'issue #28 : méthode réellement
+        # inconnue pour ce test.
         with pytest.raises(ValueError, match="fingerprint inconnue"):
-            compute_fingerprint({"hostname": "sw01"}, ["hostname"], "murmur3")
+            compute_fingerprint({"hostname": "sw01"}, ["hostname"], "crc32")
+
+    def test_murmur3_entier_32_bits_decimal(self) -> None:
+        """Issue #28 : MURMUR3 — entier non signé en décimal, PAS un hex digest."""
+        result = compute_fingerprint({"hostname": "sw01"}, ["hostname"], "murmur3")
+        assert result is not None
+        assert result.isdigit()  # décimal, pas d'hex
+        assert 0 <= int(result) < 2**32
+
+    def test_murmur3_deterministe_et_distinct(self) -> None:
+        a = compute_fingerprint({"hostname": "sw01"}, ["hostname"], "murmur3")
+        b = compute_fingerprint({"hostname": "sw01"}, ["hostname"], "murmur3")
+        c = compute_fingerprint({"hostname": "sw02"}, ["hostname"], "murmur3")
+        assert a == b
+        assert a != c
+
+    def test_murmur3_valeur_attendue(self) -> None:
+        """Comparaison directe avec mmh3 sur le payload document entier."""
+        import json as _json
+
+        import mmh3
+
+        doc = {"hostname": "sw01", "seq": 42}
+        result = compute_fingerprint(doc, None, "murmur3")
+        payload = _json.dumps(doc, sort_keys=True, default=str, ensure_ascii=False)
+        assert result == str(mmh3.hash(payload.encode("utf-8"), signed=False))
+
+
+class TestHmacMode:
+    """Issue #28 : mode HMAC (`key`) — l'empreinte dépend d'une clé secrète."""
+
+    DOC = {"hostname": "sw01", "seq": 42}
+
+    def test_hmac_change_le_digest(self) -> None:
+        sans = compute_fingerprint(self.DOC, None, "sha256")
+        avec = compute_fingerprint(self.DOC, None, "sha256", key="secret")
+        assert sans != avec
+
+    def test_hmac_valeur_attendue(self) -> None:
+        """Comparaison directe avec hmac.new sur le payload canonique."""
+        import hashlib as _hashlib
+        import hmac as _hmac
+        import json as _json
+
+        payload = _json.dumps(self.DOC, sort_keys=True, default=str, ensure_ascii=False)
+        expected = _hmac.new(b"secret", payload.encode("utf-8"), _hashlib.sha256).hexdigest()
+        assert compute_fingerprint(self.DOC, None, "sha256", key="secret") == expected
+
+    def test_cles_differentes_empreintes_differentes(self) -> None:
+        a = compute_fingerprint(self.DOC, None, "sha256", key="cle-a")
+        b = compute_fingerprint(self.DOC, None, "sha256", key="cle-b")
+        assert a != b
+
+    def test_hmac_sans_cle_comportement_historique(self) -> None:
+        """key=None (défaut) : hash simple, rétrocompatible."""
+        import hashlib as _hashlib
+        import json as _json
+
+        payload = _json.dumps(self.DOC, sort_keys=True, default=str, ensure_ascii=False)
+        assert compute_fingerprint(self.DOC, None, "sha256") == _hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def test_hmac_avec_champs_selectionnes(self) -> None:
+        """Le HMAC porte sur le payload concaténé, pas sur le document brut."""
+        import hashlib as _hashlib
+        import hmac as _hmac
+
+        doc = {"hostname": "sw01", "seq": 42}
+        result = compute_fingerprint(doc, ["hostname"], "sha1", key="k")
+        expected = _hmac.new(b"k", b"sw01", _hashlib.sha1).hexdigest()
+        assert result == expected

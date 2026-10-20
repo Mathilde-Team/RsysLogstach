@@ -83,17 +83,17 @@
 ### Indexer (indexer.py)
 - Réponse du serveur aux redirections (imprimante/série/parallèle) traitée côté serveur, jamais remontée à l'API
 - **Multi-nœuds et failover (#37)** : le transport opensearch-py retente le nœud suivant en cas d'échec de connexion ; `retry_on_timeout=True` étend le repli aux délais d'attente (défaut de la bibliothèque : False). `health()` (GET /) alimente le health check périodique d'omprog (`--health-check-interval`, défaut 300 s, 0 = désactivé) — un échec journalise un warning, sans jamais interrompre le pont
+- **Fingerprint HMAC/MURMUR3 (#28)** : `--fingerprint-method murmur3` (entier 32 bits via `mmh3`, non cryptographique, format `_id` décimal) ; mode HMAC avec `--fingerprint-key` ou la variable d'environnement `FINGERPRINT_KEY` (clé de déploiement, `_id` incomparables entre clés ; pas de HMAC MURMUR3, comme le filtre Logstash)
 - **`_id` déterministe (#33)** : `--document-id-template` (champ identifiant naturel, lisible) et `--document-id-fingerprint` (hash du contenu, aucun champ naturel) peuvent être configurés **simultanément** — le fingerprint est prioritaire, jamais combinés dans un même `_id` ; sans l'un ni l'autre, `_id` aléatoire (historique). Documentation des cas d'usage dans le README
 
 ## Backlog
 
 | Item | Priorité | Issue |
 |------|----------|-------|
-| Fingerprint HMAC/MURMUR3 | P3 | #28 |
 | Packaging package installable | P3 | #31 |
 | `--document-id-template` (complément du fingerprint) | P3 | #33 |
 | Filtres Logstash avancés (date, grok) | P3 | #34 |
 | Métriques et monitoring (Prometheus/Grafana) | P3 | #35 |
 | Internationalisation complète | — | #38 |
 
-Terminé : #25 (modules manquants + tests), #26 (README), #29 (null distingué d'absent — décision Mathilde), #30 (test d'intégration bout en bout), #32 (fichiers de suivi), #37 (failover multi-nœuds + health check périodique).
+Terminé : #25 (modules manquants + tests), #26 (README), #29 (null distingué d'absent — décision Mathilde), #30 (test d'intégration bout en bout), #31 (packaging installable), #32 (fichiers de suivi), #33 (_id déterministe documenté), #37 (failover multi-nœuds + health check périodique), #28 (fingerprint HMAC + MURMUR3).

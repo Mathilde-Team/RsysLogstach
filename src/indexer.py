@@ -110,6 +110,7 @@ class OpenSearchIndexer:
         dlq: LocalDeadLetterQueue | None = None,
         document_id_fingerprint_fields: list[str] | None = None,
         document_id_fingerprint_method: str = "sha256",
+        document_id_fingerprint_key: str | None = None,
     ) -> None:
         """Initialise le client OpenSearch.
 
@@ -140,6 +141,7 @@ class OpenSearchIndexer:
         )
         self._document_id_fingerprint_fields = document_id_fingerprint_fields
         self._document_id_fingerprint_method = document_id_fingerprint_method
+        self._document_id_fingerprint_key = document_id_fingerprint_key
         self._dlq = dlq
         # Failover multi-nœuds (issue #37) : le transport opensearch-py
         # retente le nœud suivant en cas d'échec de connexion. `retry_on_timeout`
@@ -184,7 +186,12 @@ class OpenSearchIndexer:
         vide pour CE document : `None` (retombe sur un `_id` aléatoire).
         """
         if self._document_id_fingerprint_fields is not None:
-            return compute_fingerprint(doc, self._document_id_fingerprint_fields, self._document_id_fingerprint_method)
+            return compute_fingerprint(
+                doc,
+                self._document_id_fingerprint_fields,
+                self._document_id_fingerprint_method,
+                key=self._document_id_fingerprint_key,
+            )
         if self._document_id_template is None:
             return None
         rendered = render(self._document_id_template, doc, on_missing="empty")
