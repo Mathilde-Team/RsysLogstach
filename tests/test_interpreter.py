@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from logstash_pipeline_parser.tree import ParseError
 
-from src.interpreter import PipelineInterpreter
+from interpreter import PipelineInterpreter
 
 
 class TestParse:

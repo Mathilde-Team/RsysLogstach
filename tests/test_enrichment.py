@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from src.enrichment import DictEnricher, TranslateDictionary, _build_geoip_record
+from enrichment import DictEnricher, TranslateDictionary, _build_geoip_record
 
 
 def _fake_geoip2_response(

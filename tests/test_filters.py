@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.filters import (
+from filters import (
     Dissector,
     DropFilter,
     FilterPipeline,
