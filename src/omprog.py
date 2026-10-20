@@ -113,6 +113,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_INDEX_PATTERN,
         help="Motif strftime de l'index quotidien (défaut : " + DEFAULT_INDEX_PATTERN.replace("%", "%%") + ")",
     )
+    g.add_argument(
+        "--health-check-interval",
+        type=float,
+        default=300,
+        metavar="SECONDES",
+        help="Health check périodique du cluster OpenSearch (0 = désactivé, défaut : 300)",
+    )
     g.add_argument("--index-template", metavar="JSON", help="Index template à installer au démarrage")
     g.add_argument(
         "--index-template-name",
@@ -401,6 +408,32 @@ async def _stdin_reader() -> Callable[[], Awaitable[bytes]]:
 
 
 @traced
+async def health_check_loop(bridge: Bridge, interval: float, stop: asyncio.Event) -> None:
+    """Surveillance périodique du cluster OpenSearch (issue #37).
+
+    Un échec du health check n'interrompt RIEN : le failover d'un nœud à
+    l'autre est géré par le transport opensearch-py à chaque requête (voir
+    `indexer.OpenSearchIndexer`). Ce contrôle journalise l'état du cluster
+    et rend visible un cluster entièrement injoignable même quand rsyslog
+    n'envoie rien (sans lui, le pont resterait silencieux entre deux messages).
+    """
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+            break  # arrêt demandé pendant l'attente
+        except asyncio.TimeoutError:
+            pass
+        try:
+            info = await bridge.indexer.health()
+            logger.info(
+                "Health check OpenSearch OK version={version}",
+                version=info.get("version", {}).get("number", "?"),
+            )
+        except Exception as exc:  # noqa: BLE001 - la surveillance ne doit jamais arrêter le pont
+            logger.warning("Health check OpenSearch échoué erreur={error}", error=exc)
+
+
+@traced
 async def amain(args: argparse.Namespace) -> int:
     """Construit le pont, installe l'index template, sert jusqu'à l'arrêt."""
     bridge = build_bridge(args)
@@ -410,7 +443,12 @@ async def amain(args: argparse.Namespace) -> int:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
+    health_task: asyncio.Task | None = None
+    if getattr(args, "health_check_interval", 0):
+        health_task = asyncio.ensure_future(health_check_loop(bridge, args.health_check_interval, stop))
     count = await serve(bridge, await _stdin_reader(), _stdout_writer, stop)
+    if health_task is not None:
+        health_task.cancel()
     logger.info("Arrêt du pont messages={count}", count=count)
     return 0
 
