@@ -20,16 +20,16 @@ rsyslog → omprog (asyncio) → [filters] → [enrichment] → [indexer] → Op
 
 | Module | Rôle | Dépendances |
 |--------|------|-------------|
-| `omprog.py` | Point d'entrée asyncio (rsyslog omprog) | interpreter, indexer |
+| `omprog.py` | Point d'entrée asyncio (rsyslog omprog) | tous les modules métier |
 | `tracing.py` | Décorateur `@traced` (loguru) | — |
 | `util.py` | `add_failure_tags`, `load_json_file`, `opensearch_auth_from_env` | tracing |
 | `templates.py` | `render_template()` — syntaxe `%{field}` / `%{[a][b]}` | tracing |
 | `fingerprint.py` | `compute_fingerprint()` — sha256/sha1/md5 | templates, tracing |
 | `dlq.py` | `LocalDeadLetterQueue` — JSONL append-only | tracing |
-| `enrichment.py` | Enrichissement dictionnaire + GeoIP | templates, tracing |
-| `filters.py` | `FilterPipeline` (drop, regex, kv, mutate, geoip) | util, enrichment, tracing |
-| `interpreter.py` | `PipelineInterpreter` (`--pipeline-conf` Logstash) | filters, util, tracing |
-| `indexer.py` | `OpenSearchIndexer` (opensearch-py async) | util, dlq, tracing |
+| `enrichment.py` | Enrichissement dictionnaire + GeoIP | tracing |
+| `filters.py` | `FilterPipeline` (drop, regex, kv, mutate, geoip) | enrichment, templates, tracing, util |
+| `interpreter.py` | `PipelineInterpreter` (`--pipeline-conf` Logstash) | enrichment, filters, templates, tracing, util |
+| `indexer.py` | `OpenSearchIndexer` (opensearch-py async) | dlq, fingerprint, templates, tracing |
 
 Le graphe de dépendances est acyclique, vérifié mécaniquement par `tests/test_no_cross_imports.py` (analyse `ast`).
 
@@ -163,7 +163,8 @@ uv run ruff check src/ tests/
 ## Suivi
 
 - **Sessions :** Issues #1–#24 (fermées)
-- **Travaux restants :** Issues #25–#32 (ouvertes)
+- **Fait depuis :** #25 (modules + tests), #26 (ce README), #32 (fichiers de suivi)
+- **Travaux restants :** Issues #28–#31, #33–#35, #37, #38 (liste à jour dans les issues du dépôt et le backlog de FEATURES.md)
 - **FEATURES.md :** Statut des fonctionnalités et backlog
 - **PATTERNS.md :** Conventions et patterns
 - **CLAUDE.md :** Contexte projet et historique
