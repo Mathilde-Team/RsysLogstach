@@ -32,7 +32,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from templates import render_template
+from templates import _MISSING, parse_field_path, render_template, resolve_field
 from tracing import traced
 
 _HASH_FACTORIES = {
@@ -70,13 +70,15 @@ def compute_fingerprint(doc: dict, fields: list[str] | None, method: str = "sha2
 
     Returns:
         Le hex digest (chaîne hexadécimale), ou `None` si TOUS les champs
-        demandés sont absents (ou vides) du document — une empreinte sans
-        aucune valeur distinctive n'aurait pas de sens, même convention que
+        demandés sont absents du document — une empreinte sans aucune
+        valeur distinctive n'aurait pas de sens, même convention que
         `templates.render` pour un gabarit qui rend une chaîne vide (voir
-        `OpenSearchIndexer._document_id`). Un champ présent mais `null`,
-        comme pour un gabarit `%{...}` ordinaire, se rend en chaîne vide
-        (pas distingué d'un champ absent) — limite héritée de `templates.py`,
-        voir FEATURES.md.
+        `OpenSearchIndexer._document_id`). Un champ présent mais `null` est
+        DISTINGUÉ d'un champ absent (décision issue #29) : il se rend en
+        chaîne vide mais compte comme présent — l'empreinte est alors celle
+        du contenu vide plutôt que `None`. S'écarte volontairement de
+        Logstash 8, qui ne distingue pas les deux (`StringInterpolation`
+        renvoie le gabarit littéral dans les deux cas) — voir FEATURES.md.
 
     Raises:
         ValueError: `method` non reconnu.
@@ -89,8 +91,16 @@ def compute_fingerprint(doc: dict, fields: list[str] | None, method: str = "sha2
     if not fields:
         payload = json.dumps(doc, sort_keys=True, default=str, ensure_ascii=False)
     else:
-        rendered = [render_template(f"%{{{field}}}", doc, on_missing="empty") for field in fields]
-        if not any(rendered):
+        # Distinction null/absent (décision issue #29) : un champ présent
+        # mais `null` contribue sa valeur rendue (chaîne vide) et COMPTE
+        # comme présent — seule l'absence d'un champ l'exclut. L'empreinte
+        # n'est `None` que si TOUS les champs demandés sont absents.
+        rendered = [
+            render_template(f"%{{{field}}}", doc, on_missing="empty")
+            for field in fields
+            if resolve_field(doc, parse_field_path(field)) is not _MISSING
+        ]
+        if not rendered:
             return None
         payload = _FIELD_SEPARATOR.join(rendered)
 
