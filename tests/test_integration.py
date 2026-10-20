@@ -25,7 +25,8 @@ from typing import Any
 
 from opensearchpy.exceptions import OpenSearchException, RequestError
 
-from omprog import ACK_OK, ACK_RETRY, build_bridge, build_parser
+from indexer import OpenSearchIndexer, SendOutcome
+from omprog import ACK_OK, ACK_RETRY, build_bridge, build_parser, health_check_loop
 
 
 class FakeOpenSearchClient:
@@ -40,6 +41,7 @@ class FakeOpenSearchClient:
         self.calls: list[tuple[str | None, dict[str, Any], str | None]] = []
         self.mode = "ok"
         self.closed = False
+        self.health_checks = 0
 
     async def index(self, *, index: str, body: dict[str, Any], id: str | None) -> None:
         if self.mode == "4xx":
@@ -50,6 +52,13 @@ class FakeOpenSearchClient:
 
     async def close(self) -> None:
         self.closed = True
+
+    async def info(self) -> dict[str, Any]:
+        # Endpoint GET / (health check, issue #37).
+        if self.mode == "transient":
+            raise OpenSearchException("connection refused (test)")
+        self.health_checks += 1
+        return {"version": {"number": "2.19.0-test"}}
 
 
 def make_bridge(
@@ -236,3 +245,124 @@ class TestDebitMinimal:
         assert len(fake.calls) == 200
         assert len({call[2] for call in fake.calls}) == 200  # _id uniques par champ
         assert elapsed < 1.0, f"débit trop faible : {elapsed:.2f}s pour 200 messages"
+
+
+# ----------------------------------------------------------------------
+# Issue #37 : multi-cluster OpenSearch (failover) et health check périodique
+# ----------------------------------------------------------------------
+
+
+class TestFailoverMultiNoeuds:
+    """Failover RÉEL (issue #37) : transport opensearch-py authentique,
+    deux serveurs HTTP locaux minimaux — un nœud mort, un nœud vivant.
+
+    La sélection de nœud du transport est rendue déterministe (le nœud
+    mort en premier) pour exercer le repli, pas seulement la chance.
+    """
+
+    @staticmethod
+    async def _start_minimal_opensearch() -> tuple[asyncio.Server, int]:
+        """Serveur HTTP minimal qui répond 200 JSON à toute requête."""
+
+        async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            await reader.read(65536)  # requête complète (corps petits)
+            body = b'{"result":"created","_id":"x"}'
+            writer.write(
+                b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: "
+                + str(len(body)).encode()
+                + b"\r\nconnection: close\r\n\r\n"
+                + body
+            )
+            await writer.drain()
+            writer.close()
+
+        server = await asyncio.start_server(handle, "127.0.0.1", 0)
+        return server, server.sockets[0].getsockname()[1]
+
+    def test_noeud_mort_bascule_sur_le_suivant(self) -> None:
+        async def scenario() -> SendOutcome:
+            server, alive_port = await self._start_minimal_opensearch()
+            # Port adjacent probablement libre = nœud « mort ».
+            dead_port = alive_port + 1
+            try:
+                indexer = OpenSearchIndexer(
+                    hosts=[
+                        {"host": "127.0.0.1", "port": dead_port},
+                        {"host": "127.0.0.1", "port": alive_port},
+                    ],
+                    auth=None,
+                    index_pattern="switch-logs-%Y.%m.%d",
+                    use_ssl=False,
+                    verify_certs=False,
+                )
+                # Le transport choisit normalement un nœud au hasard : on
+                # force le nœud mort en premier pour exercer le repli.
+                indexer._client.transport.randomizer = lambda: 0
+                try:
+                    return await indexer.send({"a": 1})
+                finally:
+                    await indexer.close()
+            finally:
+                server.close()
+                await server.wait_closed()
+
+        assert asyncio.run(scenario()) is SendOutcome.INDEXED
+
+    def test_retry_on_timeout_active(self) -> None:
+        """Le repli couvre aussi les délais d'attente (défaut biblio. : False)."""
+
+        async def scenario() -> bool:
+            indexer = OpenSearchIndexer(
+                hosts=[{"host": "127.0.0.1", "port": 9200}],
+                auth=None,
+                index_pattern="switch-logs-%Y.%m.%d",
+                use_ssl=False,
+                verify_certs=False,
+            )
+            try:
+                return indexer._client.transport.retry_on_timeout is True
+            finally:
+                await indexer.close()
+
+        assert asyncio.run(scenario())
+
+
+class TestHealthCheckPeriodique:
+    def test_health_renvoie_la_version(self, tmp_path: Path) -> None:
+        bridge, fake = make_bridge(tmp_path)
+        info = asyncio.run(bridge.indexer.health())
+        asyncio.run(bridge.close())
+        assert info["version"]["number"] == "2.19.0-test"
+        assert fake.health_checks == 1
+
+    def test_health_echec_leve(self, tmp_path: Path) -> None:
+        import pytest
+
+        bridge, fake = make_bridge(tmp_path)
+        fake.mode = "transient"
+        with pytest.raises(OpenSearchException):
+            asyncio.run(bridge.indexer.health())
+        asyncio.run(bridge.close())
+
+    def test_boucle_s_arrete_avec_stop_et_surveille(self, tmp_path: Path) -> None:
+        """La boucle tourne tant que `stop` n'est pas demandé, sans jamais lever."""
+        bridge, fake = make_bridge(tmp_path)
+
+        async def scenario() -> None:
+            stop = asyncio.Event()
+            loop_task = asyncio.ensure_future(health_check_loop(bridge, interval=0.01, stop=stop))
+            # Laisse la boucle tourner, puis demande l'arrêt.
+            await asyncio.sleep(0.05)
+            stop.set()
+            await loop_task  # la boucle se termine proprement, sans exception
+
+        asyncio.run(scenario())
+        asyncio.run(bridge.close())
+        assert fake.health_checks >= 1
+
+    def test_option_cli_defaut_300_et_desactivable(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args([])
+        assert args.health_check_interval == 300
+        args_off = parser.parse_args(["--health-check-interval", "0"])
+        assert args_off.health_check_interval == 0

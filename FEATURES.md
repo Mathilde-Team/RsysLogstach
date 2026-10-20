@@ -82,19 +82,17 @@
 
 ### Indexer (indexer.py)
 - Réponse du serveur aux redirections (imprimante/série/parallèle) traitée côté serveur, jamais remontée à l'API
+- **Multi-nœuds et failover (#37)** : le transport opensearch-py retente le nœud suivant en cas d'échec de connexion ; `retry_on_timeout=True` étend le repli aux délais d'attente (défaut de la bibliothèque : False). `health()` (GET /) alimente le health check périodique d'omprog (`--health-check-interval`, défaut 300 s, 0 = désactivé) — un échec journalise un warning, sans jamais interrompre le pont
 
 ## Backlog
 
 | Item | Priorité | Issue |
 |------|----------|-------|
 | Fingerprint HMAC/MURMUR3 | P3 | #28 |
-| Templates null vs absent | P2 | #29 |
-| Test d'intégration bout en bout | P2 | #30 |
 | Packaging package installable | P3 | #31 |
 | `--document-id-template` (complément du fingerprint) | P3 | #33 |
 | Filtres Logstash avancés (date, grok) | P3 | #34 |
 | Métriques et monitoring (Prometheus/Grafana) | P3 | #35 |
-| Multi-cluster OpenSearch (failover) | P2 | #37 |
 | Internationalisation complète | — | #38 |
 
-Terminé : #25 (modules manquants + tests), #26 (README), #32 (fichiers de suivi).
+Terminé : #25 (modules manquants + tests), #26 (README), #29 (null distingué d'absent — décision Mathilde), #30 (test d'intégration bout en bout), #32 (fichiers de suivi), #37 (failover multi-nœuds + health check périodique).
