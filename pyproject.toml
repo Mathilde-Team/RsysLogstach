@@ -12,22 +12,35 @@ dependencies = [
     "logstash-pipeline-parser==0.0.3",
 ]
 
+[project.scripts]
+# `rsyslogstach` remplace `PYTHONPATH=src python3 src/omprog.py` après
+# installation (issue #31) — même point d'entrée, mêmes options.
+rsyslogstach = "omprog:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "ruff",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Projet à plat (src/*.py) : la roue expose les modules au niveau RACINE
+# (filters.py, omprog.py, ...) — exactement ce que faisait PYTHONPATH=src,
+# tous les imports existants (`from filters import ...`, conftest, tests,
+# docstrings) restent valides après `pip install rsyslogstach`.
+only-include = ["src"]
+sources = ["src"]
+
 [tool.uv]
-# Projet à plat (src/*.py sans __init__.py, importé via sys.path — voir
-# tests/conftest.py et `PYTHONPATH=src` dans le déploiement rsyslog, pas
-# via une installation `pip install`) : rien à construire/empaqueter.
-# `package = false` dit à uv de gérer uniquement l'environnement
-# (résolution + verrouillage des dépendances dans uv.lock), sans tenter
-# un build PEP 517 qui nécessiterait de restructurer src/ en package
-# installable — changement hors de portée de cette session (remplacement
-# d'outil de gestion de dépendances, pas de la disposition du dépôt).
-package = false
+# Issue #31 : le projet est maintenant installable (voir [build-system] et
+# [tool.hatch.build.targets.wheel]) — uv installe rsyslogstach dans le venv
+# en plus de résoudre/verrouiller les dépendances. Les tests continuent de
+# tourner depuis l'extraction (conftest ajoute src/ au sys.path).
+package = true
 
 [tool.ruff]
 line-length = 120
