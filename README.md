@@ -92,8 +92,10 @@ Origine et type de chaque champ, exemples de requêtes :
 
 ## Utilisation
 
+Depuis une installation (issue #31) :
+
 ```bash
-PYTHONPATH=src python3 src/omprog.py \
+rsyslogstach \
     --filters /etc/omprog/filters.json \
     --enrich-dict /etc/omprog/enrichment.json \
     --pipeline-conf /etc/omprog/pipeline.d/ \
@@ -101,6 +103,9 @@ PYTHONPATH=src python3 src/omprog.py \
     --index-template opensearch-index-template.json \
     --dlq-path /var/log/rsyslogstach/dlq.jsonl
 ```
+
+Sans installation (extraction seule), l'ancienne forme reste valable :
+`PYTHONPATH=src python3 src/omprog.py ...` — mêmes options, même point d'entrée.
 
 ### Protocole omprog
 

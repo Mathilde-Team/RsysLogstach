@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [[package]]
@@ -1114,7 +1114,7 @@ wheels = [
 [[package]]
 name = "rsyslogstach"
 version = "0.9.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "geoip2" },
     { name = "logstash-pipeline-parser" },
