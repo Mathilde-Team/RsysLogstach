@@ -318,6 +318,7 @@ def apply_gsub(doc: dict[str, Any], gsub: list) -> None:
                 logger.debug("motif gsub invalide, ignoré : champ={} motif={!r}", field_ref, pattern)
 
 
+@traced
 def _assign_mutate_field(
     doc: dict[str, Any], key: str, raw_value: Any, *, now: datetime | None, on_missing: str
 ) -> None:
@@ -340,6 +341,7 @@ def _assign_mutate_field(
     assign_field(doc, parse_field_path(key), rendered)
 
 
+@traced
 def _apply_string_case(doc: dict[str, Any], field_ref: str, transform: Any) -> None:
     """Applique `transform` (`str.upper`/`str.lower`/`str.capitalize`) à un champ texte, en place.
 
@@ -358,6 +360,7 @@ def _apply_string_case(doc: dict[str, Any], field_ref: str, transform: Any) -> N
         assign_field(doc, path, transform(value))
 
 
+@traced
 def _apply_merge(doc: dict[str, Any], dest_ref: str, source_ref: str) -> None:
     """`mutate.merge` (session 20) : fusionne `source_ref` DANS `dest_ref`, en place.
 
@@ -687,6 +690,7 @@ class GeoipFilter:
         try:
             self._lookup = lookup_factory(database)
         except (OSError, maxminddb.InvalidDatabaseError) as exc:
+            logger.error("base geoip illisible : {} ({})", database, exc)
             raise ValueError(f"base geoip illisible : {database} ({exc})") from exc
         self._source = source
         self._target = target
@@ -797,6 +801,7 @@ class TranslateFilter:
         try:
             self._dictionary = dictionary_factory(dictionary_path)
         except (OSError, yaml.YAMLError) as exc:
+            logger.error("dictionnaire translate illisible : {} ({})", dictionary_path, exc)
             raise ValueError(f"dictionnaire translate illisible : {dictionary_path} ({exc})") from exc
         self._source = source
         self._target = target

@@ -40,6 +40,7 @@ import geoip2.database
 import geoip2.errors
 import maxminddb
 import yaml
+from loguru import logger
 
 from tracing import traced
 
@@ -146,7 +147,8 @@ class GeoIPEnricher:
             return
         try:
             response = self._reader.city(ip)
-        except (geoip2.errors.AddressNotFoundError, ValueError):
+        except (geoip2.errors.AddressNotFoundError, ValueError) as exc:
+            logger.debug("geoip : adresse introuvable ou invalide ({}), champ non rempli : {}", ip, exc)
             return
         doc[self._out_field] = _build_geoip_record(ip, response)
 
@@ -202,7 +204,8 @@ class GeoIPLookup:
             return None
         try:
             response = self._reader.city(ip)
-        except (geoip2.errors.AddressNotFoundError, ValueError):
+        except (geoip2.errors.AddressNotFoundError, ValueError) as exc:
+            logger.debug("geoip : adresse introuvable ou invalide ({}), aucun enregistrement : {}", ip, exc)
             return None
         return _build_geoip_record(ip, response)
 
@@ -269,7 +272,8 @@ class TranslateDictionary:
         """
         try:
             return self._mapping.get(key)
-        except TypeError:
+        except TypeError as exc:
+            logger.debug("translate : clé non hachable, traitée comme absence : {}", exc)
             # Clé non hachable (ex. `source` résolu en liste/dict) : pas
             # une entrée valide d'un dictionnaire translate, absence comme
             # une autre plutôt qu'une exception qui ferait échouer le
@@ -338,7 +342,8 @@ class GenericMmdbLookup:
         """
         try:
             record = self._reader.get(ip)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
+            logger.debug("geoip : adresse invalide, aucun enregistrement : {}", exc)
             return None
         return record if isinstance(record, dict) else None
 

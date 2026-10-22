@@ -406,7 +406,8 @@ class PipelineInterpreter:
                 elif section_type == "output":
                     actions.extend(self._run_output_body(body, doc, now=now, on_missing=on_missing))
                 # "input" : voir la docstring du module, "Limites assumées" — rien à appliquer.
-        except _DocumentDropped:
+        except _DocumentDropped as exc:
+            logger.debug("document écarté par un filtre : {}", exc)
             return None
         return actions
 
@@ -652,6 +653,7 @@ class PipelineInterpreter:
         assign_field(doc, parse_field_path(target), record)
 
     @staticmethod
+    @traced
     def _geoip_lookup_failure(doc: dict[str, Any], options: dict[str, Any]) -> None:
         """`tag_on_failure` du plugin `geoip` (défaut `["_geoip_lookup_failure"]`, comme Logstash)."""
         add_failure_tags(doc, options.get("tag_on_failure", ["_geoip_lookup_failure"]))
@@ -771,6 +773,7 @@ class PipelineInterpreter:
         assign_field(doc, parse_field_path(target), parsed.astimezone(timezone.utc).isoformat())
 
     @staticmethod
+    @traced
     def _date_parse_failure(doc: dict[str, Any], options: dict[str, Any]) -> None:
         """`tag_on_failure` du plugin `date` (défaut `["_dateparsefailure"]`, comme Logstash)."""
         add_failure_tags(doc, options.get("tag_on_failure", ["_dateparsefailure"]))
@@ -905,6 +908,7 @@ _DATE_PATTERN_TOKENS: dict[str, str] = {
 }
 
 
+@traced
 def _translate_date_pattern(pattern: str) -> str | None:
     """Traduit un motif de date Java/Joda (option `match` du plugin `date`) en motif `strptime`.
 
@@ -952,6 +956,7 @@ def _translate_date_pattern(pattern: str) -> str | None:
     return "".join(result)
 
 
+@traced
 def _parse_date_value(text: str, pattern: str, tz_name: str | None) -> datetime | None:
     """Tente de parser `text` selon `pattern` (une entrée de `match` du plugin `date`).
 
@@ -982,13 +987,15 @@ def _parse_date_value(text: str, pattern: str, tz_name: str | None) -> datetime 
             if strptime_pattern is None:
                 return None
             dt = datetime.strptime(text, strptime_pattern)
-    except (ValueError, OverflowError, OSError):
+    except (ValueError, OverflowError, OSError) as exc:
+        logger.debug("date : valeur non analysable ({!r}) : {}", text, exc)
         return None
     if dt.tzinfo is None:
         if tz_name:
             try:
                 dt = dt.replace(tzinfo=ZoneInfo(tz_name))
-            except (ZoneInfoNotFoundError, ValueError):
+            except (ZoneInfoNotFoundError, ValueError) as exc:
+                logger.debug("fuseau {} inconnu, UTC retenu : {}", tz_name, exc)
                 dt = dt.replace(tzinfo=timezone.utc)
         else:
             dt = dt.replace(tzinfo=timezone.utc)
@@ -1179,7 +1186,8 @@ def _compare(lhs: Any, op: str, rhs: Any) -> bool:
             return lhs > rhs
         if op == ">=":
             return lhs >= rhs
-    except TypeError:
+    except TypeError as exc:
+        logger.debug("comparaison : opérande non comparable, faux retourné : {}", exc)
         return False
     return False  # pragma: no cover (opérateur hors de _COMPARE_OPS, inatteignable par construction)
 
@@ -1194,12 +1202,14 @@ def _coerce_comparable(lhs: Any, rhs: Any) -> tuple[Any, Any]:
     if isinstance(lhs, (int, float)) and not isinstance(lhs, bool) and isinstance(rhs, str):
         try:
             return lhs, type(lhs)(rhs)
-        except ValueError:
+        except ValueError as exc:
+            logger.debug("comparaison : nombre attendu, opérandes inchangés : {}", exc)
             return lhs, rhs
     if isinstance(rhs, (int, float)) and not isinstance(rhs, bool) and isinstance(lhs, str):
         try:
             return type(rhs)(lhs), rhs
-        except ValueError:
+        except ValueError as exc:
+            logger.debug("comparaison : nombre attendu, opérandes inchangés : {}", exc)
             return lhs, rhs
     return lhs, rhs
 
