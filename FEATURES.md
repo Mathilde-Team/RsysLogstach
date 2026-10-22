@@ -13,7 +13,7 @@
 | **drop** | source, words_file, mode (contains), case_sensitive | 8 |
 | **regex** | source, pattern (groupes nommés) | 8 |
 | **kv** | source, field_split, value_split, prefix | 8 |
-| **mutate** | convert (integer/string), remove_field, prefix | 14 |
+| **mutate** | convert (integer, integer_eu, float, float_eu, string, boolean ; règles de la documentation Logstash, issue #73), remove_field, prefix | 14 |
 | **mutate** | uppercase, lowercase, capitalize, split, join, merge, copy, update, coerce | 20 |
 | **geoip** | source, target, tag_on_failure | 24 |
 
@@ -69,11 +69,17 @@
 - Voir issue #28
 
 ### Templates (templates.py)
+- Fraction de seconde `S…` : précision milliseconde ; au-delà de 3 lettres, complétée par des zéros (`SSSSSS` → `123000`), alors que Java Time afficherait les microsecondes
 - Rendu des valeurs aligné sur Logstash 8 (`StringInterpolation`, issue #49) : booléen `true`/`false`, liste jointe par `,`, objet en JSON compact
 - **Changement de comportement (#49)** : un `document_id`, un nom d'index ou une empreinte construit à partir d'un booléen (`True` → `true`), d'une liste (`['a', 'b']` → `a,b`) ou d'un objet (repr Python → JSON) change de valeur — à signaler dans les notes de version (doublons possibles dans OpenSearch pour les documents déjà indexés avec l'ancien rendu)
 - Références mal formées refusées (`ValueError`) comme par Logstash : `a[b]`, `a]`, `[]`, `[a[b]]`
 - Écart assumé : un objet à l'intérieur d'une liste est rendu en JSON (Logstash utilise le `toString()` Java de la map)
 - Rendu d'un champ `null` : chaîne vide — écart assumé avec Logstash 8, qui conserve le gabarit `%{champ}` littéral. **Fingerprint (#29, décision Mathilde)** : un champ `null` est distingué d'un champ absent — il compte comme présent (empreinte du contenu vide), `None` uniquement si tous les champs demandés sont absents
+
+### Pipeline `.conf` (interpreter.py)
+- `drop {}` natif non interprété : l'abandon d'un document passe par un step `"drop"` invoqué via `filters_json`
+- Comme Logstash, un tableau à un seul élément dans une condition (`[level] in ["ERROR"]`) est une **référence de champ**, pas un tableau : écrire `[level] == "ERROR"` ou au moins deux éléments
+- `mutate convert` : une chaîne non numérique (« abc ») laisse le champ inchangé (Logstash/Ruby donnerait 0)
 
 ### Point d'entrée (omprog.py)
 - Reconstruit en 2026 (issue #40) : le fichier d'origine n'a pas été retrouvé

@@ -347,8 +347,9 @@ class PipelineInterpreter:
     def close(self) -> None:
         """Ferme toute base mmdb/geoip ouverte par un plugin `mmdb {}`/`geoip {}` du pipeline.
 
-        Sans effet si le pipeline ne contient aucun plugin `mmdb`/`geoip`
-        (aucun `GenericMmdbLookup`/`GeoIPLookup` n'a alors été créé).
+        Ferme aussi les bases ouvertes par les steps "geoip" des fichiers
+        `filters_json` chargés (`filters.FilterPipeline.close`). Sans effet si
+        le pipeline ne contient aucun plugin `mmdb`/`geoip`/`filters_json`.
         Symétrique de `enrichment.GeoIPEnricher.close()` pour `--geoip-db`
         — à appeler par l'appelant (`src/omprog`) dans son bloc `finally`,
         une seule fois à l'arrêt. `TranslateDictionary` n'a rien à fermer
@@ -361,6 +362,12 @@ class PipelineInterpreter:
         for lookup in self._geoip_lookups.values():
             lookup.close()
         self._geoip_lookups.clear()
+        # Un `filters_json` peut lui-même ouvrir une base (step "geoip",
+        # `filters.GeoipFilter`) : sans ceci, elle restait ouverte jusqu'à la
+        # fin du processus (issue #73, relevé en écrivant les tests).
+        for pipeline in self._filter_pipelines.values():
+            pipeline.close()
+        self._filter_pipelines.clear()
 
     @traced
     def apply(
@@ -924,8 +931,10 @@ def _translate_date_pattern(pattern: str) -> str | None:
     pas une erreur qui interrompt le filtre `date` tout entier.
 
     Littéraux entre quotes simples (convention Java/Joda, ex. `"'T'"` ->
-    le caractère `T` littéral, `"''"` -> un guillemet simple littéral) et
-    texte non alphabétique (`-`, `:`, `.`...) recopiés tels quels, comme
+    le caractère `T` littéral, `"''"` -> un guillemet simple littéral, y
+    compris à l'intérieur d'un littéral : `"'o''clock'"` -> `o'clock`) et
+    texte non alphabétique (`-`, `:`, `.`...) recopiés tels quels (un `%`
+    littéral est échappé en `%%` pour `strptime`), comme
     `templates._split_date_pattern` pour le SENS INVERSE (formatage) —
     non réutilisée ici : privée à `templates.py`, un module ne doit pas
     puiser dans les membres privés d'un autre (voir PATTERNS.md).
@@ -935,11 +944,23 @@ def _translate_date_pattern(pattern: str) -> str | None:
     while i < n:
         ch = pattern[i]
         if ch == "'":
-            j = pattern.find("'", i + 1)
-            if j == -1:
-                return None
-            result.append(pattern[i + 1 : j] or "'")
-            i = j + 1
+            if pattern.startswith("''", i):  # `''` hors littéral : une quote
+                result.append("'")
+                i += 2
+                continue
+            literal: list[str] = []
+            j = i + 1
+            while True:
+                k = pattern.find("'", j)
+                if k == -1:
+                    return None
+                literal.append(pattern[j:k])
+                if not pattern.startswith("''", k):
+                    break
+                literal.append("'")  # `''` DANS un littéral : une quote (`'o''clock'`)
+                j = k + 2
+            result.append("".join(literal).replace("%", "%%"))
+            i = k + 1
             continue
         if ch.isalpha():
             j = i
@@ -951,7 +972,7 @@ def _translate_date_pattern(pattern: str) -> str | None:
             result.append(token)
             i = j
             continue
-        result.append(ch)
+        result.append("%%" if ch == "%" else ch)  # `%` littéral, pas une directive strptime
         i += 1
     return "".join(result)
 
