@@ -367,3 +367,36 @@ class TestDate:
     def test_motif_non_textuel_saute(self) -> None:
         conf = 'filter { date { match => ["ts", 42, "ISO8601"] } }'
         assert _appliquer(conf, {"ts": "2026-10-22T08:30:00Z"})[0]["@timestamp"] == "2026-10-22T08:30:00+00:00"
+
+
+class TestDropNatif:
+    """`drop {}` natif d'un `.conf` (#34) : même effet qu'un step `"drop"` de `filters_json`."""
+
+    def test_drop_sous_condition_ecarte_le_document(self) -> None:
+        conf = 'filter { if [x] == "bruit" { drop { } } }'
+        doc, actions = _appliquer(conf, {"x": "bruit"})
+        assert actions is None
+
+    def test_condition_fausse_conserve_le_document(self) -> None:
+        conf = 'filter { if [x] == "bruit" { drop { } } mutate { add_field => { "vu" => "oui" } } }'
+        doc, actions = _appliquer(conf, {"x": "utile"})
+        assert actions == []
+        assert doc["vu"] == "oui"
+
+    def test_drop_interrompt_les_etapes_suivantes_et_output(self) -> None:
+        conf = 'filter { drop { } mutate { add_field => { "vu" => "oui" } } } output { stdout { } }'
+        doc, actions = _appliquer(conf, {"x": 1})
+        assert actions is None
+        assert "vu" not in doc
+
+    @pytest.mark.parametrize(("tirage", "attendu_ecarte"), [(0.10, True), (0.49, True), (0.50, False), (0.99, False)])
+    def test_percentage_ecarte_une_part_aleatoire(self, monkeypatch, tirage: float, attendu_ecarte: bool) -> None:
+        monkeypatch.setattr("interpreter.random.random", lambda: tirage)
+        _, actions = _appliquer("filter { drop { percentage => 50 } }", {"x": 1})
+        assert (actions is None) is attendu_ecarte
+
+    @pytest.mark.parametrize("valeur", ['"100"', "100", '"pas un nombre"'])
+    def test_percentage_100_ou_invalide_ecarte_toujours(self, monkeypatch, valeur: str) -> None:
+        monkeypatch.setattr("interpreter.random.random", lambda: 0.999)
+        _, actions = _appliquer(f"filter {{ drop {{ percentage => {valeur} }} }}", {"x": 1})
+        assert actions is None

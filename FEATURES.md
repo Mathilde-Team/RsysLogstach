@@ -25,6 +25,7 @@
 - Parsing des fichiers `.conf` via `logstash-pipeline-parser`
 - Exemples : `pipeline.example.d/10_input`, `25_filter`, `30_output`
 - tag_on_failure pour date et geoip (sessions 19, 22, 24)
+- Filtres natifs interprétés : `dissect`, `mutate`, `translate`, `mmdb`, `geoip`, `date`, `drop` (avec `percentage`, #34), plus le pont `filters_json`
 
 ### Indexation OpenSearch (module indexer.py)
 - `OpenSearchIndexer` — indexation asynchrone (opensearch-py[async])
@@ -77,7 +78,7 @@
 - Rendu d'un champ `null` : chaîne vide — écart assumé avec Logstash 8, qui conserve le gabarit `%{champ}` littéral. **Fingerprint (#29, décision Mathilde)** : un champ `null` est distingué d'un champ absent — il compte comme présent (empreinte du contenu vide), `None` uniquement si tous les champs demandés sont absents
 
 ### Pipeline `.conf` (interpreter.py)
-- `drop {}` natif non interprété : l'abandon d'un document passe par un step `"drop"` invoqué via `filters_json`
+- Plugins natifs non interprétés (structure seule, signalée en debug) : `grok`, `kv` natif, `dns`… Leur équivalent passe par `filters_json` (`regex`, `kv` de `filters.py`)
 - Comme Logstash, un tableau à un seul élément dans une condition (`[level] in ["ERROR"]`) est une **référence de champ**, pas un tableau : écrire `[level] == "ERROR"` ou au moins deux éléments
 - `mutate convert` : une chaîne non numérique (« abc ») laisse le champ inchangé (Logstash/Ruby donnerait 0)
 
