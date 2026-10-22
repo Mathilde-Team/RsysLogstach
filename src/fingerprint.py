@@ -35,6 +35,7 @@ import hmac
 import json
 
 import mmh3
+from loguru import logger  # noqa: F401 — logger de module exigé (SOCLE §8)
 
 from templates import _MISSING, parse_field_path, render_template, resolve_field
 from tracing import traced
