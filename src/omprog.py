@@ -436,7 +436,8 @@ async def health_check_loop(bridge: Bridge, interval: float, stop: asyncio.Event
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval)
             break  # arrêt demandé pendant l'attente
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
+            logger.debug("vérification de santé : délai dépassé : {}", exc)
             pass
         try:
             info = await bridge.indexer.health()

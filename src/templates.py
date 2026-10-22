@@ -332,6 +332,7 @@ def _render_field(inner: str, event: dict[str, Any], on_missing: str) -> str:
     return _logstash_string(value)
 
 
+@traced
 def _logstash_string(value: Any) -> str:
     """Convertit une valeur de champ en texte comme `StringInterpolation` de Logstash 8.
 
@@ -417,7 +418,8 @@ def _event_timestamp(event: dict[str, Any], fallback: datetime) -> datetime:
         text = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
         try:
             parsed = datetime.fromisoformat(text)
-        except ValueError:
+        except ValueError as exc:
+            logger.debug("date de gabarit non analysable, valeur de repli : {}", exc)
             return fallback
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
     return fallback

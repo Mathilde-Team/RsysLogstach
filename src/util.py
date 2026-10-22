@@ -23,6 +23,8 @@ import json
 import os
 from typing import Any
 
+from loguru import logger  # noqa: F401 — logger de module exigé (SOCLE §8)
+
 from tracing import traced
 
 

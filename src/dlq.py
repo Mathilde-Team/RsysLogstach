@@ -29,6 +29,8 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from loguru import logger
+
 from tracing import traced
 
 _SIZE_UNITS = {"": 1, "b": 1, "k": 1024, "kb": 1024, "m": 1024**2, "mb": 1024**2, "g": 1024**3, "gb": 1024**3}
@@ -176,7 +178,8 @@ class LocalDeadLetterQueue:
             if stamp.tzinfo is None:
                 stamp = stamp.replace(tzinfo=timezone.utc)
             return stamp
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.debug("_oldest_entry_time : nom illisible, date de modification retenue : {}", exc)
             return datetime.fromtimestamp(self._path.stat().st_mtime, timezone.utc)
 
     @traced
