@@ -194,11 +194,9 @@ class GeoIPLookup:
     def lookup(self, ip: str) -> dict[str, Any] | None:
         """Renvoie le dict de géolocalisation pour `ip`, ou `None` si absente/invalide.
 
-        Note (voir FEATURES.md, "Limites connues") : comme `GenericMmdbLookup`,
-        le chemin heureux (une IP effectivement présente dans la base) n'est
-        pas couvert par un test automatisé — nécessiterait un vrai fichier
-        .mmdb. `interpreter.py::PipelineInterpreter` reste testable via un
-        double de test injecté à la place de cette classe.
+        Testé sur une vraie base GeoLite2-City générée par les tests
+        (`tests/conftest.py`, `mmdb-writer`, issue #73) : IP présente,
+        champs partiels, IP absente ou invalide.
         """
         if not ip:
             return None
@@ -332,13 +330,9 @@ class GenericMmdbLookup:
     def lookup(self, ip: str) -> dict[str, Any] | None:
         """Renvoie l'enregistrement brut associé à `ip`, ou `None` si absent/IP invalide.
 
-        Note (voir FEATURES.md, "Limites connues") : le bonheur de cette
-        méthode (une IP effectivement présente dans la base renvoie bien
-        son enregistrement) n'est pas couvert par un test automatisé —
-        nécessiterait un vrai fichier .mmdb, même limite déjà documentée
-        pour `GeoIPEnricher`. `interpreter.py::PipelineInterpreter` reste
-        testable via un double de test injecté à la place de cette
-        classe (voir `tests/test_interpreter.py`).
+        Testé sur une vraie base personnalisée générée par les tests
+        (`tests/conftest.py`, `mmdb-writer`, issue #73), directement et
+        via le plugin `mmdb` de `PipelineInterpreter`.
         """
         try:
             record = self._reader.get(ip)

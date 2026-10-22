@@ -30,6 +30,7 @@ import re
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 import maxminddb
@@ -272,27 +273,86 @@ MUTATE_HANDLED_KEYS = (
 )
 
 
+_BOOLEENS_VRAIS = ("true", "t", "yes", "y", "1", "1.0")
+_BOOLEENS_FAUX = ("false", "f", "no", "n", "0", "0.0", "")
+
+
+@traced
+def _texte_vers_decimal(texte: str, *, eu: bool) -> Decimal:
+    """Chaîne numérique avec séparateurs de milliers → `Decimal` exact.
+
+    Format anglo-saxon (`integer`/`float`) : virgule = milliers, point =
+    décimales (« 1,000.5 »). Format européen (`*_eu`) : point = milliers,
+    virgule = décimales (« 1.000,5 »).
+    """
+    texte = texte.strip()
+    texte = texte.replace(".", "").replace(",", ".") if eu else texte.replace(",", "")
+    nombre = Decimal(texte)
+    if not nombre.is_finite():
+        raise ValueError(f"nombre non fini : {texte!r}")
+    return nombre
+
+
 @traced
 def convert_value(value: Any, target_type: str, field_name: str) -> Any:
-    """Caste `value` selon `target_type` (`mutate.convert`), façon Logstash.
+    """Caste `value` selon `target_type` (`mutate.convert`), comme Logstash.
 
-    Une conversion impossible (ex. `int("abc")`) laisse `value` inchangée
-    (log en DEBUG) plutôt que de faire échouer tout le document — même
-    philosophie que `FilterPipeline.apply` pour un filtre sans
-    correspondance.
+    Règles de la documentation officielle du filtre `mutate` (option
+    `convert`, issue #73) :
+        - tableau : chaque élément converti ; hash : aucune action ;
+        - `integer` : booléen → 1/0, nombre décimal tronqué (`3.99` → 3,
+          `-2.7` → -2), chaîne lue avec virgules de milliers (« 1,000 »)
+          et partie décimale tronquée (« 1000.5 » → 1000) ;
+        - `integer_eu` : idem, points de milliers et virgule décimale
+          (« 1.000 » → 1000) ;
+        - `float` : booléen → 1.0/0.0, entier → flottant, chaîne avec
+          virgules de milliers et point décimal (« 1,000.5 ») ;
+        - `float_eu` : idem, « 1.000,5 » → 1000.5 ;
+        - `string` : texte (booléens en `true`/`false`, comme Ruby) ;
+        - `boolean` : 0/1 (entiers ou flottants) et chaînes « true », « t »,
+          « yes », « y », « 1 », « 1.0 » / « false », « f », « no », « n »,
+          « 0 », « 0.0 », chaîne vide (sans tenir compte de la casse ni des
+          espaces) ; toute autre valeur passe inchangée.
+
+    Écart assumé : une chaîne qui n'est pas un nombre (ex. « abc »)
+    laisse `value` inchangée (log en DEBUG) au lieu du `to_i` de Ruby
+    (« abc » → 0), plutôt que d'inventer une valeur : même philosophie que
+    `FilterPipeline.apply` pour un filtre sans correspondance. `int` est
+    accepté comme alias d'`integer`, `str` de `string`, `bool` de
+    `boolean`.
     """
+    if isinstance(value, list):
+        return [convert_value(item, target_type, field_name) for item in value]
+    if isinstance(value, dict):
+        return value
     try:
         if target_type in ("integer", "integer_eu", "int"):
-            return int(str(value).replace(",", "").strip())
+            if isinstance(value, bool):
+                return int(value)
+            if isinstance(value, (int, float)):
+                return int(value)
+            return int(_texte_vers_decimal(str(value), eu=target_type == "integer_eu"))
         if target_type in ("float", "float_eu"):
-            return float(str(value).replace(",", "."))
+            if isinstance(value, (bool, int, float)):
+                return float(value)
+            return float(_texte_vers_decimal(str(value), eu=target_type == "float_eu"))
         if target_type in ("string", "str"):
+            if isinstance(value, bool):
+                return "true" if value else "false"
             return str(value)
         if target_type in ("boolean", "bool"):
             if isinstance(value, bool):
                 return value
-            return str(value).strip().lower() in ("true", "t", "yes", "y", "1")
-    except (TypeError, ValueError):
+            if isinstance(value, (int, float)):
+                return {0: False, 1: True}.get(value, value)
+            texte = str(value).strip().lower()
+            if texte in _BOOLEENS_VRAIS:
+                return True
+            if texte in _BOOLEENS_FAUX:
+                return False
+            logger.debug("conversion booléenne impossible, champ inchangé : {}", field_name)
+            return value
+    except (TypeError, ValueError, ArithmeticError, OverflowError):
         logger.debug("conversion mutate impossible, champ inchangé : {}={!r} -> {}", field_name, value, target_type)
         return value
     logger.debug("type de conversion mutate inconnu, champ inchangé : {}", target_type)
