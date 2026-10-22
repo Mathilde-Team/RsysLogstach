@@ -137,7 +137,7 @@ def render(
             parts.append(_render_field(token.value, event, on_missing))
         elif token.kind == "olddate":
             parts.append(_format_timestamp(token.value, _event_timestamp(event, moment)))
-        elif token.kind == "newdate":
+        else:  # "newdate" : seul type restant produit par _tokenize
             if token.value == "TIME_NOW":
                 parts.append(_format_timestamp("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", moment))
             else:
@@ -484,7 +484,10 @@ def _format_letter_run(run: str, dt: datetime) -> str:
     letter = run[0]
     length = len(run)
     if letter in ("y", "Y"):
-        return f"{dt.year % 100:02d}" if length <= 2 else f"{dt.year:0{max(length, 4)}d}"
+        # Joda et Java Time : seul `yy` est réduit à deux chiffres ; `y`,
+        # `yyy`, `yyyy` donnent l'année complète (« 2026 »), complétée par des
+        # zéros jusqu'au nombre de lettres (`yyyyy` → « 02026 »).
+        return f"{dt.year % 100:02d}" if length == 2 else f"{dt.year:0{length}d}"
     if letter == "M":
         return f"{dt.month:0{length}d}"
     if letter == "d":

@@ -21,6 +21,8 @@ rsyslogstach = "omprog:main"
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "pytest-cov>=7.1.0",  # couverture lignes + branches, seuil bloquant (issue #73)
+    "mmdb-writer>=0.2.7",  # bases .mmdb réelles générées par les tests (tests/conftest.py)
     "ruff",
 ]
 
@@ -52,3 +54,14 @@ select = ["E", "F", "B", "I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+# Couverture des branches obligatoire (SOCLE §4, Mathilde-Team/.github#9).
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+# Seuil bloquant de l'équipe (décision du 21/10/2026, Mathilde-Team/.github#9),
+# déclaré ici seulement : lu par `pytest --cov` dans le job Qualité de ci.yml.
+fail_under = 95
+show_missing = true

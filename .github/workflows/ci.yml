@@ -33,7 +33,9 @@ jobs:
       - name: Formatage (ruff format --check)
         run: uv run ruff format --check .
 
-      - name: Tests (pytest)
+      - name: Tests et couverture (pytest --cov, seuil lu dans pyproject.toml)
         # Suite complète, sans exclusion : src/templates.py (reconstruit,
-        # issue #40) permet de collecter tests/test_fingerprint.py.
-        run: uv run pytest -q
+        # issue #40) permet de collecter tests/test_fingerprint.py. Couverture
+        # lignes + branches de src/ ; seuil bloquant (95 %) déclaré une seule
+        # fois dans pyproject.toml ([tool.coverage.*], issue #73).
+        run: uv run pytest -q --cov --cov-report=term-missing
