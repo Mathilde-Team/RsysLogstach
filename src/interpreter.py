@@ -135,6 +135,11 @@ seulement lue) :
       qui dérive sa date de `"@timestamp"` (voir `templates.
       _event_timestamp`) — sans `date`, ce champ ne peut jamais refléter
       l'horodatage embarqué DANS un message de switch.
+    - `filter { if [x] == "bruit" { drop { [percentage => N] } } }` (#34)
+      — le plugin `drop` officiel : écarte le document (`apply()` renvoie
+      `None`, comme pour un step `"drop"` d'un `filters_json`), sous la
+      condition du `if` englobant. `percentage` n'écarte qu'une part
+      aléatoire des documents, comme dans Logstash.
 
 Limites assumées (à documenter dans FEATURES.md, section "Limites
 connues") :
@@ -149,7 +154,7 @@ connues") :
       DANS un bloc `mutate {}` sont interprétées ici ; un
       `dissect { add_tag => [...] }` ne déclenchera pas l'ajout du tag.
     - Plugins filter autres que `dissect`/`mutate`/`translate`/`mmdb`/
-      `geoip`/`filters_json`/`date` (ex. `grok`, `kv` NATIF Logstash,
+      `geoip`/`filters_json`/`date`/`drop` (ex. `grok`, `kv` NATIF Logstash,
       `dns`) : structure normalisée (accessible si besoin) mais aucun
       comportement appliqué au document — un `logger.debug` le signale,
       le document n'est pas modifié pour cette étape. `filters.py` couvre
@@ -232,6 +237,7 @@ demande explicite ("ok python >3.11").
 from __future__ import annotations
 
 import json
+import random
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -271,9 +277,10 @@ class OutputAction:
 
 
 class _DocumentDropped(Exception):
-    """Signal interne : un step `"drop"` d'un `filters_json` a demandé l'abandon du document.
+    """Signal interne : un `drop` a demandé l'abandon du document.
 
-    Levée par `_apply_filters_json`, capturée par `apply()` (voir sa
+    Levée par `_apply_drop` (plugin `drop {}` natif, #34) et par
+    `_apply_filters_json` (step `"drop"` d'un fichier JSON), capturée par `apply()` (voir sa
     docstring) — jamais propagée hors de `PipelineInterpreter`. Un simple
     booléen de retour n'aurait pas suffi ici : `_run_filter_body` peut
     être plusieurs niveaux d'appels récursifs à l'intérieur d'un `if`/
@@ -455,8 +462,34 @@ class PipelineInterpreter:
             self._apply_filters_json(doc, options, now=now, on_missing=on_missing)
         elif name == "date":
             self._apply_date(doc, options)
+        elif name == "drop":
+            self._apply_drop(options)
         else:
             logger.debug("plugin filter non interprété (structure seule) : {}", name)
+
+    @traced
+    def _apply_drop(self, options: dict[str, Any]) -> None:
+        """`filter { [if ...] drop { [percentage => N] } }` — plugin `drop` natif (#34).
+
+        Comme Logstash, écarte le document courant : lève `_DocumentDropped`,
+        que `apply()` convertit en `None`, exactement comme un step `"drop"`
+        d'un `filters_json`. La condition se place sur le `if` englobant.
+        `percentage` (entier 0-100, 100 par défaut) n'écarte qu'une part
+        aléatoire des documents, comme l'option officielle ; une valeur non
+        numérique est ignorée (on écarte, comme sans l'option).
+        """
+        logger.debug("_apply_drop() called | options={}", options)
+        brut = options.get("percentage", 100)
+        try:
+            pourcentage = float(brut)
+        except (TypeError, ValueError):
+            logger.debug("drop : percentage non numérique ignoré : {!r}", brut)
+            pourcentage = 100.0
+        if pourcentage < 100 and random.random() * 100 >= pourcentage:
+            logger.debug("_apply_drop() returning | document conservé (percentage={})", pourcentage)
+            return
+        logger.debug("_apply_drop() raising | _DocumentDropped (percentage={})", pourcentage)
+        raise _DocumentDropped("drop natif")
 
     @traced
     def _apply_dissect(self, doc: dict[str, Any], options: dict[str, Any]) -> None:
