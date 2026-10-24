@@ -11,6 +11,7 @@ dependencies = [
     "pyyaml",
     "logstash-pipeline-parser==0.0.3",
     "mmh3",
+    "prometheus-client==0.26.0",  # métriques /metrics (issue #35), version figée
 ]
 
 [project.scripts]
