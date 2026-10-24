@@ -183,6 +183,57 @@ secrète — deux déploiements avec des clés différentes produisent des
 `_id` incomparables. Combinable avec `sha256`/`sha1`/`md5` (pas avec
 `murmur3`).
 
+## Traductions
+
+Les journaux de niveau `info` et au-dessus et l'aide de la ligne de
+commande passent par gettext (issue #38, domaine `rsyslogstach`). Le
+français est la langue source ; la langue suit l'environnement, comme pour
+tout programme gettext (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG`) :
+
+```bash
+LANGUAGE=en_US python3 src/omprog.py --help
+```
+
+Côté rsyslog, la variable se passe au programme par l'environnement du
+service. Les traces `debug`/`trace` restent en français.
+
+| Fichier | Rôle |
+|---|---|
+| `lang/LINGUAS` | seule liste des 29 langues |
+| `lang/messages.pot` | modèle extrait des sources (`xgettext`) |
+| `lang/<locale>.po` | une traduction par langue |
+| `lang/locale/<locale>/LC_MESSAGES/rsyslogstach.mo` | catalogues compilés, suivis par git et installés par la roue dans `<prefix>/share/locale` |
+
+Catalogues cherchés : `$RSYSLOGSTACH_LOCALEDIR`, puis `lang/locale/` du
+dépôt, `<prefix>/share/locale` et `/usr/share/locale`.
+
+**Modifier une chaîne ou en ajouter une** : l'entourer de `_()` (`from
+i18n import _`), en gardant les champs `{...}` de loguru, puis lancer
+`scripts/i18n-update.sh` (gettext requis : `apt-get install gettext`) et
+committer `lang/`. Les traductions existantes sont conservées par
+`msgmerge` ; les nouvelles chaînes arrivent avec `msgstr ""`, sans
+traduction automatique.
+
+**Traduire** : remplir les `msgstr` de `lang/<locale>.po` en conservant les
+champs `{...}` et les `%%`, retirer la marque `fuzzy` après relecture,
+puis relancer `scripts/i18n-update.sh` (recompile le `.mo`).
+
+**Ajouter une langue** : ajouter son code à `lang/LINGUAS`, lancer
+`scripts/i18n-update.sh` (crée `lang/<code>.po`), traduire, relancer.
+Aucun code ni `pyproject.toml` à modifier.
+
+Contrôles :
+
+- `scripts/i18n-update.sh --check` (job « i18n » de la CI) : `.pot` à jour
+  avec les sources, `.po` synchronisés, `msgfmt --check`, `.mo` à jour ;
+- `scripts/i18n_report.py` : taux de traduction par langue (aussi dans le
+  résumé du job) ;
+- `tests/test_i18n.py` : chaînes utilisateur marquées, catalogues valides.
+
+Le workflow `i18n.yml` régénère les catalogues après chaque push sur dev
+qui change des chaînes et propose une PR (branche
+`chore/i18n-catalogues`).
+
 ## Tests
 
 ```bash

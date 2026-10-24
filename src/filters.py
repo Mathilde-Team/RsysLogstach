@@ -39,6 +39,7 @@ import yaml
 from loguru import logger
 
 from enrichment import GeoIPLookup, TranslateDictionary
+from i18n import _
 from templates import _MISSING, assign_field, parse_field_path, remove_field_path, render_template, resolve_field
 from tracing import traced
 from util import add_failure_tags
@@ -201,7 +202,7 @@ class KeyValueFilter:
         for token in source.split(self._field_split):
             if self._value_split not in token:
                 continue
-            key, _, value = token.partition(self._value_split)
+            key, _sep, value = token.partition(self._value_split)
             key = key.strip()
             if key:
                 result[self._prefix + key] = value.strip()
@@ -639,7 +640,7 @@ def apply_mutate(
         if isinstance(remove_tags, list) and isinstance(doc.get("tags"), list):
             doc["tags"] = [tag for tag in doc["tags"] if tag not in remove_tags]
     except Exception as exc:  # reproduit le `rescue => ex` générique du plugin réel
-        logger.warning("exception pendant l'application du filtre mutate, opérations restantes ignorées : {}", exc)
+        logger.warning(_("exception pendant l'application du filtre mutate, opérations restantes ignorées : {}"), exc)
         tag_on_failure = options.get("tag_on_failure", "_mutate_error")
         if not isinstance(tag_on_failure, str):
             tag_on_failure = "_mutate_error"
@@ -751,7 +752,7 @@ class GeoipFilter:
         try:
             self._lookup = lookup_factory(database)
         except (OSError, maxminddb.InvalidDatabaseError) as exc:
-            logger.error("base geoip illisible : {} ({})", database, exc)
+            logger.error(_("base geoip illisible : {} ({})"), database, exc)
             raise ValueError(f"base geoip illisible : {database} ({exc})") from exc
         self._source = source
         self._target = target
@@ -862,7 +863,7 @@ class TranslateFilter:
         try:
             self._dictionary = dictionary_factory(dictionary_path)
         except (OSError, yaml.YAMLError) as exc:
-            logger.error("dictionnaire translate illisible : {} ({})", dictionary_path, exc)
+            logger.error(_("dictionnaire translate illisible : {} ({})"), dictionary_path, exc)
             raise ValueError(f"dictionnaire translate illisible : {dictionary_path} ({exc})") from exc
         self._source = source
         self._target = target
