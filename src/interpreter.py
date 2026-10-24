@@ -124,7 +124,7 @@ seulement lue) :
       [tag_on_failure] } }` (session 19) — le filtre `date` officiel de
       Logstash : parse `champ` selon le premier motif de `match` qui
       correspond (`"ISO8601"`, `"UNIX"`/`"UNIX_MS"`, ou un motif Java/
-      Joda traduit par `_translate_date_pattern`, portée réduite — voir
+      Joda traduit par `filters.translate_date_pattern`, portée réduite — voir
       sa docstring), écrit le résultat (toujours ramené en UTC, toujours
       une chaîne ISO8601, jamais un objet `datetime` brut) à `target`
       (`"@timestamp"` par défaut). Échec (aucun motif ne correspond) :
@@ -189,11 +189,11 @@ connues") :
       `--filters-on-missing`/`--pipeline-on-missing` côté `src/omprog`
       (session 14).
     - `date` (session 19) : portée volontairement réduite par rapport au
-      filtre officiel de Logstash — voir `_translate_date_pattern`, ni
+      filtre officiel de Logstash — voir `filters.translate_date_pattern`, ni
       `SSS` (millisecondes Java, incompatibles avec `%f`, MICROsecondes
       Python) ni nom de fuseau textuel (`z`/`zzz`, ex. "CET", ambigu :
       plusieurs fuseaux IANA peuvent partager la même abréviation). Un
-      motif Java/Joda hors de `_DATE_PATTERN_TOKENS` échoue silencieusement
+      motif Java/Joda hors de `filters.DATE_PATTERN_TOKENS` échoue silencieusement
       pour CE motif (essaie le suivant de `match`, ou `tag_on_failure` si
       aucun ne convient) plutôt que de lever une exception — cohérent avec
       le reste de ce module (une configuration imparfaite ne doit jamais
@@ -240,11 +240,10 @@ import json
 import random
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from ipaddress import IPv4Address, IPv6Address
 from pathlib import PurePath
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import maxminddb
 import yaml
@@ -252,7 +251,7 @@ from logstash_pipeline_parser import Pipeline
 from loguru import logger
 
 from enrichment import GenericMmdbLookup, GeoIPLookup, TranslateDictionary
-from filters import Dissector, FilterPipeline, apply_mutate
+from filters import DateFilter, Dissector, FilterPipeline, apply_mutate
 from templates import _MISSING, assign_field, parse_field_path, render_template, resolve_field
 from tracing import traced
 from util import add_failure_tags, load_json_file
@@ -766,7 +765,7 @@ class PipelineInterpreter:
         Logstash). Trois formes de motif : `"ISO8601"` (`datetime.
         fromisoformat`, `Z` accepté), `"UNIX"`/`"UNIX_MS"` (epoch
         secondes/millisecondes, `float`/`int`), ou un motif Java/Joda
-        traduit en motif `strptime` par `_translate_date_pattern` — voir
+        traduit en motif `strptime` par `filters.translate_date_pattern` — voir
         sa docstring pour la portée volontairement réduite (PAS `SSS`,
         PAS de nom de fuseau textuel). Un motif non reconnu ou qui ne
         correspond pas à la valeur est traité comme un échec de CE motif
@@ -788,35 +787,15 @@ class PipelineInterpreter:
         `doc["tags"]` sans doublon, plutôt que de laisser `target`
         inchangé silencieusement — signale l'échec de façon visible et
         cohérente avec `add_tag`/`remove_tag` de `filters.apply_mutate`.
-        """
-        match = options.get("match")
-        if not (isinstance(match, list) and len(match) >= 2 and isinstance(match[0], str)):
-            logger.debug("plugin date sans 'match' valide, ignoré")
-            return
-        value = resolve_field(doc, parse_field_path(match[0]))
-        if value is _MISSING or value is None:
-            self._date_parse_failure(doc, options)
-            return
-        text = str(value)
-        tz_name = options.get("timezone")
-        parsed: datetime | None = None
-        for pattern in match[1:]:
-            if not isinstance(pattern, str):
-                continue
-            parsed = _parse_date_value(text, pattern, tz_name)
-            if parsed is not None:
-                break
-        if parsed is None:
-            self._date_parse_failure(doc, options)
-            return
-        target = options.get("target", "@timestamp")
-        assign_field(doc, parse_field_path(target), parsed.astimezone(timezone.utc).isoformat())
 
-    @staticmethod
-    @traced
-    def _date_parse_failure(doc: dict[str, Any], options: dict[str, Any]) -> None:
-        """`tag_on_failure` du plugin `date` (défaut `["_dateparsefailure"]`, comme Logstash)."""
-        add_failure_tags(doc, options.get("tag_on_failure", ["_dateparsefailure"]))
+        Depuis #34, toute la logique vit dans `filters.DateFilter`, partagée
+        avec le step `"date"` de `--filters` (`FilterPipeline`) : une seule
+        implémentation pour les deux mécanismes, comme `apply_mutate`
+        (session 14), `GeoipFilter` (session 24) et `TranslateFilter`
+        (session 25). Un `match` mal formé reste ici ignoré (log DEBUG) :
+        un `.conf` imparfait ne doit pas faire planter le traitement.
+        """
+        DateFilter(options).apply(doc)
 
     # ------------------------------------------------------------------
     # output{}
@@ -916,144 +895,6 @@ def _coerce_literal(value: Any) -> Any:
     if isinstance(value, (PurePath, IPv4Address, IPv6Address)):
         return str(value)
     return value
-
-
-# ----------------------------------------------------------------------
-# Filtre `date` (session 19) : motifs Java/Joda -> `strptime`, portée réduite
-# ----------------------------------------------------------------------
-
-# Jetons Java/Joda reconnus par `_translate_date_pattern`, traduits en
-# motif `strptime` de la bibliothèque standard. Portée délibérément
-# réduite (voir la docstring de `_translate_date_pattern`) : ni `SSS`
-# (millisecondes Java, incompatibles avec `%f` qui attend des
-# MICROsecondes), ni `z`/`zzz` (nom de fuseau textuel ambigu, ex. "CET").
-_DATE_PATTERN_TOKENS: dict[str, str] = {
-    "yyyy": "%Y",
-    "yy": "%y",
-    "MMMM": "%B",
-    "MMM": "%b",
-    "MM": "%m",
-    "dd": "%d",
-    "HH": "%H",
-    "hh": "%I",
-    "mm": "%M",
-    "ss": "%S",
-    "EEEE": "%A",
-    "EEE": "%a",
-    "a": "%p",
-    "XXX": "%z",
-    "XX": "%z",
-    "X": "%z",
-    "Z": "%z",
-}
-
-
-@traced
-def _translate_date_pattern(pattern: str) -> str | None:
-    """Traduit un motif de date Java/Joda (option `match` du plugin `date`) en motif `strptime`.
-
-    Portée volontairement réduite à `_DATE_PATTERN_TOKENS` ci-dessus — la
-    même discipline que `fingerprint.py` pour le filtre `fingerprint`
-    officiel (voir FEATURES.md, "Limites connues") : couvrir un sous-
-    ensemble utile et sans ambiguïté plutôt que réimplémenter tout
-    `java.time`/Joda. Renvoie `None` si le motif contient un jeton non
-    reconnu ou une quote non refermée — `_parse_date_value` traite alors
-    ce motif comme un simple échec de correspondance, exactement comme un
-    motif Logstash qui ne correspond pas à la valeur : `match => [champ,
-    motif1, motif2, ...]` peut encore essayer le motif suivant, ce n'est
-    pas une erreur qui interrompt le filtre `date` tout entier.
-
-    Littéraux entre quotes simples (convention Java/Joda, ex. `"'T'"` ->
-    le caractère `T` littéral, `"''"` -> un guillemet simple littéral, y
-    compris à l'intérieur d'un littéral : `"'o''clock'"` -> `o'clock`) et
-    texte non alphabétique (`-`, `:`, `.`...) recopiés tels quels (un `%`
-    littéral est échappé en `%%` pour `strptime`), comme
-    `templates._split_date_pattern` pour le SENS INVERSE (formatage) —
-    non réutilisée ici : privée à `templates.py`, un module ne doit pas
-    puiser dans les membres privés d'un autre (voir PATTERNS.md).
-    """
-    result: list[str] = []
-    i, n = 0, len(pattern)
-    while i < n:
-        ch = pattern[i]
-        if ch == "'":
-            if pattern.startswith("''", i):  # `''` hors littéral : une quote
-                result.append("'")
-                i += 2
-                continue
-            literal: list[str] = []
-            j = i + 1
-            while True:
-                k = pattern.find("'", j)
-                if k == -1:
-                    return None
-                literal.append(pattern[j:k])
-                if not pattern.startswith("''", k):
-                    break
-                literal.append("'")  # `''` DANS un littéral : une quote (`'o''clock'`)
-                j = k + 2
-            result.append("".join(literal).replace("%", "%%"))
-            i = k + 1
-            continue
-        if ch.isalpha():
-            j = i
-            while j < n and pattern[j] == ch:
-                j += 1
-            token = _DATE_PATTERN_TOKENS.get(pattern[i:j])
-            if token is None:
-                return None
-            result.append(token)
-            i = j
-            continue
-        result.append("%%" if ch == "%" else ch)  # `%` littéral, pas une directive strptime
-        i += 1
-    return "".join(result)
-
-
-@traced
-def _parse_date_value(text: str, pattern: str, tz_name: str | None) -> datetime | None:
-    """Tente de parser `text` selon `pattern` (une entrée de `match` du plugin `date`).
-
-    Trois formes reconnues, comme Logstash : `"ISO8601"`
-    (`datetime.fromisoformat`, `Z` accepté), `"UNIX"`/`"UNIX_MS"` (epoch
-    secondes/millisecondes), ou un motif Java/Joda traduit par
-    `_translate_date_pattern`. `None` en cas d'échec — quelle qu'en soit
-    la cause (motif non reconnu, valeur qui ne correspond pas au motif,
-    nombre invalide pour `UNIX`/`UNIX_MS`, horodatage hors limites) —
-    pour que l'appelant (`PipelineInterpreter._apply_date`) puisse
-    essayer le motif suivant de `match` sans distinguer ces cas.
-
-    Un résultat SANS fuseau (motif sans `Z`/`X`) reçoit `tz_name` (nom
-    IANA, `zoneinfo.ZoneInfo`) s'il est fourni et reconnu, sinon UTC —
-    comme Logstash. Un `ZoneInfoNotFoundError` (nom de fuseau inconnu, ex.
-    faute de frappe dans le `.conf`) retombe silencieusement sur UTC
-    plutôt que de faire échouer le parsing entier pour une erreur de
-    configuration distincte.
-    """
-    try:
-        if pattern == "ISO8601":
-            normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
-            dt = datetime.fromisoformat(normalized)
-        elif pattern in ("UNIX", "UNIX_MS"):
-            dt = datetime.fromtimestamp(float(text) / (1000.0 if pattern == "UNIX_MS" else 1.0), tz=timezone.utc)
-        else:
-            strptime_pattern = _translate_date_pattern(pattern)
-            if strptime_pattern is None:
-                return None
-            dt = datetime.strptime(text, strptime_pattern)
-    except (ValueError, OverflowError, OSError) as exc:
-        logger.debug("date : valeur non analysable ({!r}) : {}", text, exc)
-        return None
-    if dt.tzinfo is None:
-        if tz_name:
-            try:
-                dt = dt.replace(tzinfo=ZoneInfo(tz_name))
-            except (ZoneInfoNotFoundError, ValueError) as exc:
-                logger.debug("fuseau {} inconnu, UTC retenu : {}", tz_name, exc)
-                dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.replace(tzinfo=timezone.utc)
-    return dt
 
 
 @traced

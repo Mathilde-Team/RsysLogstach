@@ -1,4 +1,4 @@
-"""Filtres d'extraction façon Logstash filter{} (dissect, regex, kv, drop, mutate, geoip, translate).
+"""Filtres d'extraction façon Logstash filter{} (dissect, regex, kv, drop, mutate, geoip, translate, date).
 
 Extrait d'omprog.py (session 9, réorganisation selon le squelette de
 Mathilde) pour respecter la séparation en modules à responsabilité unique
@@ -29,9 +29,10 @@ from __future__ import annotations
 import re
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import maxminddb
 import yaml
@@ -889,6 +890,224 @@ class TranslateFilter:
         assign_field(doc, parse_field_path(self._target), value)
 
 
+# ----------------------------------------------------------------------
+# Filtre `date` (session 19, déplacé d'interpreter.py en #34) : motifs
+# Java/Joda -> `strptime`, portée réduite, partagé par `--pipeline-conf`
+# (`PipelineInterpreter._apply_date`) et `--filters` (step "date")
+# ----------------------------------------------------------------------
+
+# Jetons Java/Joda reconnus par `translate_date_pattern`, traduits en
+# motif `strptime` de la bibliothèque standard. Portée délibérément
+# réduite (voir la docstring de `translate_date_pattern`) : ni `SSS`
+# (millisecondes Java, incompatibles avec `%f` qui attend des
+# MICROsecondes), ni `z`/`zzz` (nom de fuseau textuel ambigu, ex. "CET").
+DATE_PATTERN_TOKENS: dict[str, str] = {
+    "yyyy": "%Y",
+    "yy": "%y",
+    "MMMM": "%B",
+    "MMM": "%b",
+    "MM": "%m",
+    "dd": "%d",
+    "HH": "%H",
+    "hh": "%I",
+    "mm": "%M",
+    "ss": "%S",
+    "EEEE": "%A",
+    "EEE": "%a",
+    "a": "%p",
+    "XXX": "%z",
+    "XX": "%z",
+    "X": "%z",
+    "Z": "%z",
+}
+
+
+@traced
+def translate_date_pattern(pattern: str) -> str | None:
+    """Traduit un motif de date Java/Joda (option `match` du plugin `date`) en motif `strptime`.
+
+    Portée volontairement réduite à `DATE_PATTERN_TOKENS` ci-dessus — la
+    même discipline que `fingerprint.py` pour le filtre `fingerprint`
+    officiel (voir FEATURES.md, "Limites connues") : couvrir un sous-
+    ensemble utile et sans ambiguïté plutôt que réimplémenter tout
+    `java.time`/Joda. Renvoie `None` si le motif contient un jeton non
+    reconnu ou une quote non refermée — `parse_date_value` traite alors
+    ce motif comme un simple échec de correspondance, exactement comme un
+    motif Logstash qui ne correspond pas à la valeur : `match => [champ,
+    motif1, motif2, ...]` peut encore essayer le motif suivant, ce n'est
+    pas une erreur qui interrompt le filtre `date` tout entier.
+
+    Littéraux entre quotes simples (convention Java/Joda, ex. `"'T'"` ->
+    le caractère `T` littéral, `"''"` -> un guillemet simple littéral, y
+    compris à l'intérieur d'un littéral : `"'o''clock'"` -> `o'clock`) et
+    texte non alphabétique (`-`, `:`, `.`...) recopiés tels quels (un `%`
+    littéral est échappé en `%%` pour `strptime`), comme
+    `templates._split_date_pattern` pour le SENS INVERSE (formatage) —
+    non réutilisée ici : privée à `templates.py`, un module ne doit pas
+    puiser dans les membres privés d'un autre (voir PATTERNS.md).
+    """
+    result: list[str] = []
+    i, n = 0, len(pattern)
+    while i < n:
+        ch = pattern[i]
+        if ch == "'":
+            if pattern.startswith("''", i):  # `''` hors littéral : une quote
+                result.append("'")
+                i += 2
+                continue
+            literal: list[str] = []
+            j = i + 1
+            while True:
+                k = pattern.find("'", j)
+                if k == -1:
+                    return None
+                literal.append(pattern[j:k])
+                if not pattern.startswith("''", k):
+                    break
+                literal.append("'")  # `''` DANS un littéral : une quote (`'o''clock'`)
+                j = k + 2
+            result.append("".join(literal).replace("%", "%%"))
+            i = k + 1
+            continue
+        if ch.isalpha():
+            j = i
+            while j < n and pattern[j] == ch:
+                j += 1
+            token = DATE_PATTERN_TOKENS.get(pattern[i:j])
+            if token is None:
+                return None
+            result.append(token)
+            i = j
+            continue
+        result.append("%%" if ch == "%" else ch)  # `%` littéral, pas une directive strptime
+        i += 1
+    return "".join(result)
+
+
+@traced
+def parse_date_value(text: str, pattern: str, tz_name: str | None) -> datetime | None:
+    """Tente de parser `text` selon `pattern` (une entrée de `match` du plugin `date`).
+
+    Trois formes reconnues, comme Logstash : `"ISO8601"`
+    (`datetime.fromisoformat`, `Z` accepté), `"UNIX"`/`"UNIX_MS"` (epoch
+    secondes/millisecondes), ou un motif Java/Joda traduit par
+    `translate_date_pattern`. `None` en cas d'échec — quelle qu'en soit
+    la cause (motif non reconnu, valeur qui ne correspond pas au motif,
+    nombre invalide pour `UNIX`/`UNIX_MS`, horodatage hors limites) —
+    pour que l'appelant (`DateFilter.apply`) puisse
+    essayer le motif suivant de `match` sans distinguer ces cas.
+
+    Un résultat SANS fuseau (motif sans `Z`/`X`) reçoit `tz_name` (nom
+    IANA, `zoneinfo.ZoneInfo`) s'il est fourni et reconnu, sinon UTC —
+    comme Logstash. Un `ZoneInfoNotFoundError` (nom de fuseau inconnu, ex.
+    faute de frappe dans le `.conf`) retombe silencieusement sur UTC
+    plutôt que de faire échouer le parsing entier pour une erreur de
+    configuration distincte.
+    """
+    try:
+        if pattern == "ISO8601":
+            normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+            dt = datetime.fromisoformat(normalized)
+        elif pattern in ("UNIX", "UNIX_MS"):
+            dt = datetime.fromtimestamp(float(text) / (1000.0 if pattern == "UNIX_MS" else 1.0), tz=timezone.utc)
+        else:
+            strptime_pattern = translate_date_pattern(pattern)
+            if strptime_pattern is None:
+                return None
+            dt = datetime.strptime(text, strptime_pattern)
+    except (ValueError, OverflowError, OSError) as exc:
+        logger.debug("date : valeur non analysable ({!r}) : {}", text, exc)
+        return None
+    if dt.tzinfo is None:
+        if tz_name:
+            try:
+                dt = dt.replace(tzinfo=ZoneInfo(tz_name))
+            except (ZoneInfoNotFoundError, ValueError) as exc:
+                logger.debug("fuseau {} inconnu, UTC retenu : {}", tz_name, exc)
+                dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+class DateFilter:
+    """`date` façon Logstash (match/target/timezone/tag_on_failure), pour `--filters` et `--pipeline-conf`.
+
+    Répond à #34 : `date` n'existait que pour `--pipeline-conf`
+    (`interpreter.py::PipelineInterpreter._apply_date`, session 19). Comme
+    `apply_mutate` (session 14), `GeoipFilter` (session 24) et
+    `TranslateFilter` (session 25), la logique vit désormais ICI, une seule
+    fois : `_apply_date` ne fait plus que déléguer à cette classe, et le
+    step `"date"` de `FilterPipeline` l'utilise aussi. Aucune nouvelle arête
+    de dépendances (`interpreter -> filters` existe déjà).
+
+    Options (mêmes noms que le plugin officiel) :
+
+    - `match` : `[champ, motif1, motif2, ...]`, motifs essayés dans
+      l'ordre — `"ISO8601"`, `"UNIX"`, `"UNIX_MS"` ou motif Java/Joda
+      (voir `translate_date_pattern` pour la portée réduite) ;
+    - `target` : champ écrit, `"@timestamp"` par défaut, toujours en
+      chaîne ISO8601 UTC (document sérialisable en JSON tel quel) ;
+    - `timezone` : nom IANA appliqué à une date sans fuseau ;
+    - `tag_on_failure` : tags ajoutés si rien ne correspond (champ absent,
+      `None`, ou aucun motif), `["_dateparsefailure"]` par défaut.
+
+    Un `match` mal formé (pas une liste d'au moins deux éléments dont le
+    premier est un nom de champ) rend le filtre inactif (log DEBUG) :
+    `FilterPipeline` le refuse dès la compilation (`ValueError`, voir
+    `match_valide`), alors que `--pipeline-conf` l'ignore pour ne pas
+    faire planter un `.conf` imparfait, comme avant #34.
+    """
+
+    @traced
+    def __init__(self, options: dict[str, Any]) -> None:
+        """Mémorise les options `date` de cette étape (voir la docstring de la classe)."""
+        self._options = options
+
+    @staticmethod
+    @traced
+    def match_valide(match: Any) -> bool:
+        """Vrai si `match` a la forme `[champ, motif, ...]` attendue par le plugin `date`."""
+        return isinstance(match, list) and len(match) >= 2 and isinstance(match[0], str)
+
+    @traced
+    def apply(self, doc: dict[str, Any]) -> bool:
+        """Analyse la date désignée par `match` et l'écrit dans `target`, en place.
+
+        Returns:
+            True si une date a été écrite ; False sinon (match mal formé,
+            ou échec signalé par `tag_on_failure`).
+        """
+        match = self._options.get("match")
+        if not self.match_valide(match):
+            logger.debug("plugin date sans 'match' valide, ignoré")
+            return False
+        value = resolve_field(doc, parse_field_path(match[0]))
+        if value is _MISSING or value is None:
+            self._echec(doc)
+            return False
+        text = str(value)
+        tz_name = self._options.get("timezone")
+        parsed: datetime | None = None
+        for pattern in match[1:]:
+            if not isinstance(pattern, str):
+                continue
+            parsed = parse_date_value(text, pattern, tz_name)
+            if parsed is not None:
+                break
+        if parsed is None:
+            self._echec(doc)
+            return False
+        target = self._options.get("target", "@timestamp")
+        assign_field(doc, parse_field_path(target), parsed.astimezone(timezone.utc).isoformat())
+        return True
+
+    @traced
+    def _echec(self, doc: dict[str, Any]) -> None:
+        """`tag_on_failure` du plugin `date` (défaut `["_dateparsefailure"]`, comme Logstash)."""
+        add_failure_tags(doc, self._options.get("tag_on_failure", ["_dateparsefailure"]))
+
+
 @traced
 def load_word_list(path: str) -> list[str]:
     """Charge une liste de mots depuis un fichier texte.
@@ -910,7 +1129,7 @@ def load_word_list(path: str) -> list[str]:
 
 
 class FilterPipeline:
-    """Chaîne de filtres façon Logstash (dissect, regex, kv, drop, mutate, geoip, translate), appliqués en séquence."""
+    """Chaîne de filtres façon Logstash (dissect, regex, kv, drop, mutate, geoip, translate, date), en séquence."""
 
     @traced
     def __init__(
@@ -944,7 +1163,11 @@ class FilterPipeline:
                 _apply_geoip`. "translate" attend "dictionary_path"/
                 "source"/"target" (requis) et "fallback" (optionnel) : voir
                 `TranslateFilter` pour le détail, identique à
-                `interpreter.py::_apply_translate`. Voir
+                `interpreter.py::_apply_translate`. "date" (depuis #34)
+                attend "match" ([champ, motif, ...], requis) et
+                "target"/"timezone"/"tag_on_failure" (optionnels) : voir
+                `DateFilter`, identique au plugin `date` de
+                `--pipeline-conf`. Voir
                 filters.example.json et blocklist.example.txt.
             geoip_lookup_factory: Callable construisant une
                 `enrichment.GeoIPLookup` à partir d'un chemin de base,
@@ -995,6 +1218,11 @@ class FilterPipeline:
         if filter_type == "translate":
             options = {key: value for key, value in step.items() if key not in ("type", "_comment")}
             return None, TranslateFilter(options, dictionary_factory=self._translate_dictionary_factory), None
+        if filter_type == "date":
+            options = {key: value for key, value in step.items() if key not in ("type", "_comment")}
+            if not DateFilter.match_valide(options.get("match")):
+                raise ValueError("filtre date : 'match' doit valoir [champ, motif, ...]")
+            return None, DateFilter(options), None
         source = step["source"]
         target = step.get("target")
         if filter_type == "dissect":
@@ -1060,6 +1288,9 @@ class FilterPipeline:
                 continue
             if isinstance(compiled, TranslateFilter):
                 compiled.apply(doc, now=now, on_missing=on_missing)
+                continue
+            if isinstance(compiled, DateFilter):
+                compiled.apply(doc)
                 continue
             value = doc.get(source)
             if not isinstance(value, str):

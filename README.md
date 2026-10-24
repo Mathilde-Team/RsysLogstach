@@ -27,7 +27,7 @@ rsyslog → omprog (asyncio) → [filters] → [enrichment] → [indexer] → Op
 | `fingerprint.py` | `compute_fingerprint()` — sha256/sha1/md5 | templates, tracing |
 | `dlq.py` | `LocalDeadLetterQueue` — JSONL append-only | tracing |
 | `enrichment.py` | Enrichissement dictionnaire + GeoIP | tracing |
-| `filters.py` | `FilterPipeline` (drop, regex, kv, mutate, geoip) | enrichment, templates, tracing, util |
+| `filters.py` | `FilterPipeline` (dissect, drop, regex, kv, mutate, geoip, translate, date) | enrichment, templates, tracing, util |
 | `interpreter.py` | `PipelineInterpreter` (`--pipeline-conf` Logstash) | enrichment, filters, templates, tracing, util |
 | `indexer.py` | `OpenSearchIndexer` (opensearch-py async) | dlq, fingerprint, templates, tracing |
 
@@ -71,6 +71,8 @@ Voir `filters.example.json` :
   {"type": "mutate", "convert": {"severity_code": "integer"}, "remove_field": ["msg"]}
 ]
 ```
+
+Step `date` (#34), mêmes options que le plugin `date` de Logstash : `{"type": "date", "match": ["horodatage", "ISO8601", "MMM dd HH:mm:ss"], "timezone": "Europe/Paris"}` écrit `@timestamp` (ou `target`) en ISO8601 UTC, et ajoute `_dateparsefailure` (ou `tag_on_failure`) aux tags si aucun motif ne correspond. `grok` n'est pas proposé : un step `regex` à groupes nommés le remplace.
 
 ### Enrichissement (`enrich-dict.example.json`)
 
