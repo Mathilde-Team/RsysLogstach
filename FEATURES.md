@@ -16,6 +16,7 @@
 | **mutate** | convert (integer, integer_eu, float, float_eu, string, boolean ; règles de la documentation Logstash, issue #73), remove_field, prefix | 14 |
 | **mutate** | uppercase, lowercase, capitalize, split, join, merge, copy, update, coerce | 20 |
 | **geoip** | source, target, tag_on_failure | 24 |
+| **date** | match (ISO8601, UNIX, UNIX_MS, motif Java/Joda), target, timezone, tag_on_failure ; même implémentation que le plugin `date` des `.conf` | #34 |
 
 ### Enrichissement (module enrichment.py)
 - Dictionnaire statique JSON (`enrich-dict.example.json`)
@@ -79,6 +80,7 @@
 
 ### Pipeline `.conf` (interpreter.py)
 - Plugins natifs non interprétés (structure seule, signalée en debug) : `grok`, `kv` natif, `dns`… Leur équivalent passe par `filters_json` (`regex`, `kv` de `filters.py`)
+- Décision #34 : `grok` n'est pas implémenté. Un step `regex` à groupes nommés (`(?P<champ>...)`) fait le même travail sans embarquer la bibliothèque de motifs grok. `dissect` (natif et JSON) et `translate` (natif et JSON) étaient déjà couverts. `date` est désormais disponible des deux côtés
 - Comme Logstash, un tableau à un seul élément dans une condition (`[level] in ["ERROR"]`) est une **référence de champ**, pas un tableau : écrire `[level] == "ERROR"` ou au moins deux éléments
 - `mutate convert` : une chaîne non numérique (« abc ») laisse le champ inchangé (Logstash/Ruby donnerait 0)
 
@@ -99,8 +101,7 @@
 |------|----------|-------|
 | Packaging package installable | P3 | #31 |
 | `--document-id-template` (complément du fingerprint) | P3 | #33 |
-| Filtres Logstash avancés (date, grok) | P3 | #34 |
 | Métriques et monitoring (Prometheus/Grafana) | P3 | #35 |
 | Internationalisation complète | — | #38 |
 
-Terminé : #25 (modules manquants + tests), #26 (README), #29 (null distingué d'absent — décision Mathilde), #30 (test d'intégration bout en bout), #31 (packaging installable), #32 (fichiers de suivi), #33 (_id déterministe documenté), #37 (failover multi-nœuds + health check périodique), #28 (fingerprint HMAC + MURMUR3).
+Terminé : #34 (filtres avancés : `date` dans `--filters`, `drop {}` natif ; `grok` écarté), #25 (modules manquants + tests), #26 (README), #29 (null distingué d'absent — décision Mathilde), #30 (test d'intégration bout en bout), #31 (packaging installable), #32 (fichiers de suivi), #33 (_id déterministe documenté), #37 (failover multi-nœuds + health check périodique), #28 (fingerprint HMAC + MURMUR3).
