@@ -73,3 +73,9 @@ def test_filters_ne_depend_pas_d_indexer() -> None:
 def test_enrichment_ne_depend_que_de_tracing() -> None:
     # Docstring d'enrichment.py : « Ne dépend que de `tracing` ».
     assert _imports_of("enrichment") <= {"tracing"}
+
+
+def test_i18n_ne_depend_que_de_tracing() -> None:
+    # Docstring d'i18n.py (issue #38) : importé par filters, indexer et omprog,
+    # il ne doit dépendre d'aucun d'eux.
+    assert _imports_of("i18n") <= {"tracing"}
