@@ -6,8 +6,15 @@ Mathilde.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+# Issue #38 : les messages sont traduits selon l'environnement (gettext).
+# Les tests vérifient les messages d'origine (français), quelle que soit la
+# langue de la machine : fixée ici, avant tout import de module de src/.
+os.environ["LANGUAGE"] = "fr_FR"
+os.environ.pop("RSYSLOGSTACH_LOCALEDIR", None)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
