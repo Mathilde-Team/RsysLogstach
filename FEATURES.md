@@ -101,7 +101,6 @@
 |------|----------|-------|
 | Packaging package installable | P3 | #31 |
 | `--document-id-template` (complément du fingerprint) | P3 | #33 |
-| Métriques et monitoring (Prometheus/Grafana) | P3 | #35 |
 | Internationalisation complète | — | #38 |
 
-Terminé : #34 (filtres avancés : `date` dans `--filters`, `drop {}` natif ; `grok` écarté), #25 (modules manquants + tests), #26 (README), #29 (null distingué d'absent — décision Mathilde), #30 (test d'intégration bout en bout), #31 (packaging installable), #32 (fichiers de suivi), #33 (_id déterministe documenté), #37 (failover multi-nœuds + health check périodique), #28 (fingerprint HMAC + MURMUR3).
+Terminé : #35 (métriques Prometheus, `--metrics-port`), #34 (filtres avancés : `date` dans `--filters`, `drop {}` natif ; `grok` écarté), #25 (modules manquants + tests), #26 (README), #29 (null distingué d'absent — décision Mathilde), #30 (test d'intégration bout en bout), #31 (packaging installable), #32 (fichiers de suivi), #33 (_id déterministe documenté), #37 (failover multi-nœuds + health check périodique), #28 (fingerprint HMAC + MURMUR3).

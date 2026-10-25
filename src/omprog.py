@@ -33,6 +33,7 @@ import json
 import os
 import signal
 import sys
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,6 +48,7 @@ from filters import FilterPipeline
 from i18n import _
 from indexer import OpenSearchIndexer, SendOutcome
 from interpreter import PipelineInterpreter
+from metrics import Metrics
 from tracing import traced
 from util import load_json_file, opensearch_auth_from_env
 
@@ -159,6 +161,10 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--dlq-retention", type=parse_duration, default=None, help=_("Âge maximal d'un fichier rotaté"))
     g.add_argument("--dlq-no-compress", action="store_true", help=_("Ne pas compresser les fichiers rotatés"))
 
+    g = parser.add_argument_group(_("métriques Prometheus (issue #35)"))
+    g.add_argument("--metrics-port", type=int, default=0, help=_("Port de l'endpoint /metrics (défaut : 0, désactivé)"))
+    g.add_argument("--metrics-addr", default="127.0.0.1", help=_("Adresse d'écoute de /metrics (défaut : 127.0.0.1)"))
+
     parser.add_argument(
         "--log-level",
         default="INFO",
@@ -216,6 +222,7 @@ class Bridge:
     interpreter: PipelineInterpreter | None = None
     pipeline_on_missing: str = "keep"
     dlq: LocalDeadLetterQueue | None = None
+    metrics: Metrics = field(default_factory=Metrics)
 
     @traced
     async def handle_line(self, line: str) -> str:
@@ -223,19 +230,23 @@ class Bridge:
         line = line.strip()
         if not line:
             return ACK_OK
+        self.metrics.message_received(line)
         try:
             doc = json.loads(line)
         except json.JSONDecodeError as exc:
             # Message illisible : le renvoyer ne le rendra pas lisible. On le
             # garde en DLQ s'il y en a une, puis on confirme pour ne pas boucler.
             logger.warning(_("Message JSON invalide ignoré erreur={error}"), error=exc)
+            self.metrics.error("invalid_json")
             await self._dead_letter({"message": line}, error=f"JSON invalide : {exc}")
             return ACK_OK
         if not isinstance(doc, dict):
             logger.warning(_("Message JSON qui n'est pas un objet, ignoré"))
+            self.metrics.error("not_an_object")
             await self._dead_letter({"message": line}, error="JSON qui n'est pas un objet")
             return ACK_OK
         outcome = await self.handle_doc(doc)
+        self.metrics.outcome("dropped" if outcome is None else outcome.value)
         return ACK_RETRY if outcome is SendOutcome.RETRYABLE else ACK_OK
 
     @traced
@@ -246,19 +257,19 @@ class Bridge:
         for enricher in self.enrichers:
             enricher.enrich(doc)
         if self.interpreter is None:
-            return await self.indexer.send(doc)
+            return await self._send(doc)
         actions = self.interpreter.apply(doc, on_missing=self.pipeline_on_missing)
         if actions is None:
             return None
         if not self.interpreter.has_output:
             # Pipeline réduit à filter{} : destination statique de la ligne de commande.
-            return await self.indexer.send(doc)
+            return await self._send(doc)
         outcome: SendOutcome | None = None
         for action in actions:
             if action.plugin not in _INDEX_PLUGINS:
                 logger.debug("Sortie {plugin} non gérée par omprog, ignorée", plugin=action.plugin)
                 continue
-            result = await self.indexer.send(
+            result = await self._send(
                 doc,
                 index=_option_str(action.options.get("index")),
                 document_id=_option_str(action.options.get("document_id")),
@@ -267,6 +278,15 @@ class Bridge:
             if result is SendOutcome.RETRYABLE or outcome is None:
                 outcome = result
         return outcome
+
+    @traced
+    async def _send(self, doc: dict[str, Any], **kwargs: Any) -> SendOutcome:
+        """`indexer.send`, chronométré pour l'histogramme de latence (issue #35)."""
+        start = time.perf_counter()
+        try:
+            return await self.indexer.send(doc, **kwargs)
+        finally:
+            self.metrics.index_latency.observe(time.perf_counter() - start)
 
     @traced
     async def _dead_letter(self, doc: dict[str, Any], *, error: str) -> None:
@@ -356,6 +376,7 @@ def build_bridge(args: argparse.Namespace, *, indexer_factory: Callable[..., Any
         interpreter=interpreter,
         pipeline_on_missing=args.pipeline_on_missing,
         dlq=dlq,
+        metrics=Metrics(dlq_path=args.dlq_path),
     )
 
 
@@ -406,6 +427,7 @@ async def serve(
                 reply = await bridge.handle_line(raw.decode("utf-8", errors="replace"))
             except Exception as exc:  # noqa: BLE001 - un message ne doit pas arrêter le pont
                 logger.exception(_("Échec inattendu du traitement d'un message erreur={error}"), error=exc)
+                bridge.metrics.error("exception")
                 reply = f"Erreur : {type(exc).__name__}"
             write(reply)
             count += 1
@@ -467,12 +489,18 @@ async def amain(args: argparse.Namespace) -> int:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
+    metrics_server = None
+    if getattr(args, "metrics_port", 0):
+        metrics_server = bridge.metrics.serve(args.metrics_port, args.metrics_addr)
     health_task: asyncio.Task | None = None
     if getattr(args, "health_check_interval", 0):
         health_task = asyncio.ensure_future(health_check_loop(bridge, args.health_check_interval, stop))
     count = await serve(bridge, await _stdin_reader(), _stdout_writer, stop)
     if health_task is not None:
         health_task.cancel()
+    if metrics_server is not None:
+        server, _thread = metrics_server
+        server.shutdown()
     logger.info(_("Arrêt du pont messages={count}"), count=count)
     return 0
 

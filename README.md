@@ -29,6 +29,7 @@ rsyslog → omprog (asyncio) → [filters] → [enrichment] → [indexer] → Op
 | `enrichment.py` | Enrichissement dictionnaire + GeoIP | tracing |
 | `filters.py` | `FilterPipeline` (dissect, drop, regex, kv, mutate, geoip, translate, date) | enrichment, templates, tracing, util |
 | `interpreter.py` | `PipelineInterpreter` (`--pipeline-conf` Logstash) | enrichment, filters, templates, tracing, util |
+| `metrics.py` | `Metrics` — compteurs, histogrammes et jauges Prometheus, endpoint `/metrics` | tracing |
 | `indexer.py` | `OpenSearchIndexer` (opensearch-py async) | dlq, fingerprint, templates, tracing |
 
 Le graphe de dépendances est acyclique, vérifié mécaniquement par `tests/test_no_cross_imports.py` (analyse `ast`).
@@ -138,6 +139,20 @@ toujours vers les nœuds de `--opensearch-host`.
 `PYTHONPATH=src python3 src/omprog.py --help` donne la liste complète.
 
 **Multi-nœuds et failover (#37)** : `--opensearch-host` est répétable ; le transport opensearch-py retente le nœud suivant en cas d'échec de connexion ou de délai (`retry_on_timeout`), et un health check périodique journalise l'état du cluster (`--health-check-interval`, défaut 300 s, 0 = désactivé).
+
+### Métriques Prometheus (issue #35)
+
+Désactivées par défaut. `--metrics-port 9464` démarre un endpoint `/metrics` sur `127.0.0.1` (`--metrics-addr 0.0.0.0` pour l'exposer au réseau) :
+
+| Métrique | Type | Contenu |
+|----------|------|---------|
+| `rsyslogstach_messages_received_total` | compteur | lignes reçues de rsyslog |
+| `rsyslogstach_messages_total{outcome}` | compteur | `indexed`, `dropped` (filtre ou pipeline sans sortie), `dead_lettered`, `retryable` |
+| `rsyslogstach_errors_total{cause}` | compteur | `invalid_json`, `not_an_object`, `exception` |
+| `rsyslogstach_index_latency_seconds` | histogramme | durée d'un envoi à OpenSearch |
+| `rsyslogstach_message_size_bytes` | histogramme | taille des lignes reçues (octets UTF-8) |
+| `rsyslogstach_dlq_size_bytes` | jauge | taille du fichier DLQ courant (`--dlq-path`) |
+| `rsyslogstach_retry_pending` | jauge | échecs transitoires consécutifs depuis la dernière indexation réussie |
 
 ### Rotation de la DLQ (issue #27)
 

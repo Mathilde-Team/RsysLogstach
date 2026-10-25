@@ -5,6 +5,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Les numéros 
 ## [Non publié]
 
 ### Ajouté
+- **Métriques Prometheus** (#35) : module `metrics.py` (prometheus-client 0.26.0, registre propre au pont), endpoint `/metrics` activé par `--metrics-port` (désactivé par défaut, écoute sur 127.0.0.1). Compteurs reçus/issues/erreurs, histogrammes de latence d'indexation et de taille, jauges de taille de DLQ et de renvois en attente.
 - **Internationalisation** (#38) : journaux `info` et au-dessus et aide de la ligne de commande traduisibles (gettext, domaine `rsyslogstach`, langue choisie par l'environnement), 29 langues listées dans `lang/LINGUAS` (traduction anglaise complète, les autres à faire), `scripts/i18n-update.sh` (mise à jour, `--check`, `--compile`), `scripts/i18n_report.py`, job CI « i18n », workflow `i18n.yml` (PR de mise à jour des catalogues) ; les `.mo` sont installés par la roue dans `share/locale`.
 - Règles de protection versionnées `.github/branch-protection/{main,dev}.json` (relevées sur la protection réelle du 22/10/2026), vérifiées par le workflow `branch-protection.yml` (push sur main/dev, chaque jour) et `scripts/check_branch_protection.py` (socle Mathilde-Team/.github#1, #83).
 - **`drop {}` natif** dans un pipeline `.conf` (#34) : `if [x] == "bruit" { drop { } }` écarte le document (`apply()` renvoie `None`, comme un step `"drop"` de `filters_json`) ; option `percentage` honorée comme dans Logstash.

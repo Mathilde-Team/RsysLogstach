@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: RsysLogstach\n"
 "Report-Msgid-Bugs-To: https://github.com/Mathilde-Team/RsysLogstach/issues\n"
-"POT-Creation-Date: 2026-10-24 17:03+0000\n"
+"POT-Creation-Date: 2026-10-25 07:57+0000\n"
 "PO-Revision-Date: 2026-10-24 17:02+0000\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
@@ -40,6 +40,15 @@ msgstr ""
 #: src/indexer.py
 #, python-brace-format
 msgid "Indexation OpenSearch échouée erreur={error}"
+msgstr ""
+
+#: src/metrics.py
+#, python-brace-format
+msgid "Métriques Prometheus sur http://{addr}:{port}/metrics"
+msgstr ""
+
+#: src/omprog.py
+msgid "Adresse d'écoute de /metrics (défaut : 127.0.0.1)"
 msgstr ""
 
 #: src/omprog.py
@@ -178,6 +187,10 @@ msgid "Pont rsyslog omprog -> OpenSearch, compatible schéma/filtres Logstash."
 msgstr ""
 
 #: src/omprog.py
+msgid "Port de l'endpoint /metrics (défaut : 0, désactivé)"
+msgstr ""
+
+#: src/omprog.py
 #, python-format, no-python-brace-format
 msgid "Rendu d'un %%{champ} absent dans le pipeline (défaut : keep)"
 msgstr ""
@@ -218,6 +231,10 @@ msgstr ""
 
 #: src/omprog.py
 msgid "filtres et pipeline"
+msgstr ""
+
+#: src/omprog.py
+msgid "métriques Prometheus (issue #35)"
 msgstr ""
 
 #: src/omprog.py
