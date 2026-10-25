@@ -53,3 +53,13 @@ class TestPyproject:
         assert "omprog.py" in modules
         assert "filters.py" in modules
         assert not (src / "__init__.py").exists(), "src/ doit rester à plat (modules top-level), pas un package « src »"
+
+
+class TestTraductions:
+    """Issue #38 : les catalogues compilés font partie de la roue."""
+
+    def test_catalogues_en_donnees_partagees(self) -> None:
+        # Tout lang/locale/ (un dossier par langue de lang/LINGUAS) devient
+        # <prefix>/share/locale/ : ajouter une langue ne touche pas au pyproject.
+        wheel = _pyproject()["tool"]["hatch"]["build"]["targets"]["wheel"]
+        assert wheel["shared-data"] == {"lang/locale": "share/locale"}

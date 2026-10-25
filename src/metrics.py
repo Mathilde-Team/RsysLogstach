@@ -33,6 +33,7 @@ from typing import Any
 from loguru import logger
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest, start_http_server
 
+from i18n import _
 from tracing import traced
 
 OUTCOMES = ("indexed", "dropped", "dead_lettered", "retryable")
@@ -131,5 +132,5 @@ class Metrics:
         locale par défaut : exposer les métriques au réseau est un choix
         explicite (`--metrics-addr 0.0.0.0`).
         """
-        logger.info("Métriques Prometheus sur http://{addr}:{port}/metrics", addr=addr, port=port)
+        logger.info(_("Métriques Prometheus sur http://{addr}:{port}/metrics"), addr=addr, port=port)
         return server_factory(port, addr=addr, registry=self.registry)
