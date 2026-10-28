@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Métriques Prometheus du pont (issue #35).
 
 Le pont tournait sans aucune métrique : impossible de suivre en production le

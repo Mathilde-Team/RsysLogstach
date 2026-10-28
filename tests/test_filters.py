@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests des filtres de `src/filters.py` (issue #25) : dissect, regex, kv,
 drop, mutate et la chaîne `FilterPipeline`."""
 

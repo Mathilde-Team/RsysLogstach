@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests de `omprog.py` (issue #40) : chaîne de traitement et protocole omprog.
 
 Sans pytest-asyncio (CLAUDE.md) : `asyncio.run()` direct. L'indexeur est un

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests de `src/templates.py` : gabarits de date et écriture de champs (issue #73).
 
 Gabarits `%{+FORMAT}` (Joda), `%{{FORMAT}}` (Java Time) et `%{{TIME_NOW}}`,

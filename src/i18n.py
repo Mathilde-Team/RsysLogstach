@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Traduction des messages destinés à l'utilisateur (issue #38).
 
 Domaine gettext : ``rsyslogstach``. Langue source : le français (les

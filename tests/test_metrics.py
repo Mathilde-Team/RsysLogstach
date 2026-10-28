@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests des métriques Prometheus (issue #35) : `src/metrics.py` et leur câblage dans `omprog`.
 
 Sans pytest-asyncio (CLAUDE.md) : `asyncio.run()` direct. L'endpoint HTTP est

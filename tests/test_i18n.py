@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Internationalisation (issue #38) : module ``i18n``, catalogues de ``lang/``
 et marquage des chaînes destinées à l'utilisateur.
 

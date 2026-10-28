@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests pytest pour dlq.py::LocalDeadLetterQueue (session 13).
 
 Pas de dépendance à pytest-asyncio (absente de requirements-dev.txt,

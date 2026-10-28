@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Filtres d'extraction façon Logstash filter{} (dissect, regex, kv, drop, mutate, geoip, translate, date).
 
 Extrait d'omprog.py (session 9, réorganisation selon le squelette de

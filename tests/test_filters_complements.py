@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests complémentaires de `src/filters.py` (issue #73).
 
 - `convert_value` : règles de la documentation officielle du filtre `mutate`

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Point d'entrée rsyslog `omprog` : stdin JSON → filtres → enrichissement → pipeline → OpenSearch.
 
 Reconstruit (issue #40) : le fichier d'origine n'a pas été retrouvé. Le
