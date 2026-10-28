@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests des conditions, branches et options de `src/interpreter.py` (issue #73).
 
 Sémantique des conditions Logstash (comparaisons avec coercition chaîne ↔

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Packaging installable (issue #31) : contrats du pyproject.toml.
 
 La roue doit exposer les modules au niveau RACINE (même disposition que

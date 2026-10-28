@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Test d'intégration bout en bout (issue #30) : ligne rsyslog → omprog
 (Bridge) → filters → enrichment → pipeline → indexer → client OpenSearch factice.
 

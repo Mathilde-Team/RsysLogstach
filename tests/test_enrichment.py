@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests d'`src/enrichment.py` (issue #25) : DictEnricher, TranslateDictionary
 et la construction des enregistrements GeoIP (via un double de réponse geoip2)."""
 

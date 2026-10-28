@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Utilitaires génériques sans logique métier propre.
 
 Extrait d'omprog.py (session 9, réorganisation selon le squelette de

@@ -5,7 +5,7 @@
 Pipeline asynchrone en Python qui reçoit les messages syslog via le module `omprog` de rsyslog, applique des filtres et un enrichissement, puis indexe dans OpenSearch — avec Dead Letter Queue pour les échecs permanents et fingerprint déterministe pour l'idempotence.
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://python.org)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
 ## Architecture
 
@@ -255,6 +255,20 @@ qui change des chaînes et propose une PR (branche
 uv run pytest tests/ -v
 uv run ruff check src/ tests/
 ```
+
+## Licence
+
+RsysLogstach est publié sous **GPL-3.0-or-later**. Le texte officiel de la GPLv3 se trouve dans [`LICENSE`](LICENSE), `pyproject.toml` déclare `license = "GPL-3.0-or-later"`, et chaque fichier de code porte l'en-tête `# SPDX-License-Identifier: GPL-3.0-or-later`.
+
+Le dépôt ne reprend aucun code de Logstash (Apache-2.0) : les filtres sont réimplémentés à partir de la documentation publique. Les dépendances ne sont pas embarquées, et leurs licences sont compatibles avec la GPLv3 :
+
+| Dépendance | Licence |
+|---|---|
+| logstash-pipeline-parser 0.0.3 | MIT |
+| opensearch-py | Apache-2.0 |
+| geoip2, maxminddb | Apache-2.0 |
+| prometheus-client | Apache-2.0 AND BSD-2-Clause |
+| pyyaml, mmh3, loguru | MIT |
 
 ## Suivi
 

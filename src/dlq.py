@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Dead letter queue locale pour les échecs d'indexation OpenSearch permanents.
 
 Nouveau module (session 13), réponse à l'item "Proposé" #2 de FEATURES.md :

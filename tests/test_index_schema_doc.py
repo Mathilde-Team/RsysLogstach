@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Garde-fou de docs/opensearch-index-schema.md (issue #36).
 
 Chaque champ déclaré dans opensearch-index-template.json (y compris les

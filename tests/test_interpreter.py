@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests de `src/interpreter.py` (issue #25) : le pipeline `.conf` Logstash,
 via `PipelineInterpreter` — parse une fois, `apply()` par document.
 

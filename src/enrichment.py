@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Enrichissement de documents (dictionnaire + géolocalisation MaxMind).
 
 Extrait d'omprog.py (session 9, réorganisation selon le squelette de

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Indexation OpenSearch, un index par jour, avec document_id optionnel façon gabarit Logstash.
 
 Extrait d'omprog.py (session 9, réorganisation selon le squelette de

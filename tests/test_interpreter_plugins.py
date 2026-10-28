@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests des plugins `filter{}` enrichis de `src/interpreter.py` (issue #73).
 
 `translate`, `mmdb`, `geoip`, `filters_json` et `date`, écrits en vrai
