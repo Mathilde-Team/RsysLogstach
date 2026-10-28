@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests complémentaires d'`src/omprog.py` (issue #73).
 
 Options et sorties restées hors tests : `--geoip-db` sur une vraie base

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Empreinte déterministe d'un document, pour un document_id OpenSearch idempotent.
 
 Feuille du graphe de dépendances comme `templates`/`enrichment`/`util`/`dlq` :

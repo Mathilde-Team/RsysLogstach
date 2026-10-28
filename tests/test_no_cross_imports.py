@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Issue #25 : le graphe de dépendances entre modules de `src/` reste acyclique.
 
 Vérification mécanique via `ast` (pas une simple relecture des docstrings) —

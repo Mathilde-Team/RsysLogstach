@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # scripts/i18n-update.sh -- maintenance des catalogues gettext (issue #38,
 # sur le modèle de Gcm4 scripts/i18n-update.sh).
 #

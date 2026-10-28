@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Lecture et interprétation des templates Logstash (syntaxe "sprintf", %{...}).
 
 Module autonome et réutilisable : ne connaît rien d'omprog, de rsyslog ni

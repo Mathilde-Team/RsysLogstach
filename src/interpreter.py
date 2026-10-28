@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Interprète un vrai fichier de pipeline Logstash (`input{}`/`filter{}`/`output{}`)
 et l'applique concrètement à un document événement.
 

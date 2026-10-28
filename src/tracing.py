@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Traçabilité systématique des fonctions : un `logger.debug` en entrée,
 un `logger.debug` à CHAQUE sortie (retour normal ou exception).
 

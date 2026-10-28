@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Issue #40 : les modules du projet d'origine (joints par Mathilde le 12/10/2026)
 s'importent avec les dépendances du projet, sans réseau ni OpenSearch."""
 

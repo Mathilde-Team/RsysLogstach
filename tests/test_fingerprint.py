@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests pytest pour fingerprint.py::compute_fingerprint (session 17).
 
 Couvre l'empreinte du document entier (fields=None/[]), l'empreinte d'une

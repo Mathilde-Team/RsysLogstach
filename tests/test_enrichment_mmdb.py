@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests d'`src/enrichment.py` sur de vraies bases MaxMind DB (issue #73).
 
 Les bases sont générées par `conftest.py` (`mmdb-writer`) : `GeoIPEnricher`,

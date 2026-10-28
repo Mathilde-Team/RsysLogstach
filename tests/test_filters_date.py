@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests du filtre `date` partagé par `--filters` et `--pipeline-conf` (issue #34).
 
 - step JSON `"date"` de `FilterPipeline` : motifs ISO8601, UNIX, UNIX_MS,

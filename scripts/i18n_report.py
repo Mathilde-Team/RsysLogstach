@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """État des traductions de ``lang/`` (issue #38, sur le modèle de Gcm4
 ``scripts/i18n_report.py``).
 

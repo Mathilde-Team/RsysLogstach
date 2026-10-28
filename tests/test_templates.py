@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tests de templates.py (module reconstruit, issue #40)."""
 
 from __future__ import annotations
