@@ -11,6 +11,7 @@ dependencies = [
     "pyyaml",
     "logstash-pipeline-parser==0.0.3",
     "mmh3",
+    "prometheus-client==0.26.0",  # métriques /metrics (issue #35), version figée
 ]
 
 [project.scripts]
@@ -37,6 +38,13 @@ build-backend = "hatchling.build"
 # docstrings) restent valides après `pip install rsyslogstach`.
 only-include = ["src"]
 sources = ["src"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+# Issue #38 : catalogues compilés (un dossier par langue de lang/LINGUAS,
+# tenus à jour par scripts/i18n-update.sh) installés dans
+# <prefix>/share/locale/<locale>/LC_MESSAGES/rsyslogstach.mo, là où
+# src/i18n.py les cherche. Ajouter une langue ne touche pas à ce fichier.
+"lang/locale" = "share/locale"
 
 [tool.uv]
 # Issue #31 : le projet est maintenant installable (voir [build-system] et

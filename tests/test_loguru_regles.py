@@ -140,6 +140,14 @@ def erreurs_de_format(tree: ast.Module, style: str = "loguru") -> list[str]:
             first, extra = node.args[1], len(node.args) - 2
         else:
             extra = len(node.args) - 1
+        # Message traduit (issue #38) : `_("...")` porte le format d'origine.
+        if (
+            isinstance(first, ast.Call)
+            and isinstance(first.func, ast.Name)
+            and first.func.id == "_"
+            and len(first.args) == 1
+        ):
+            first = first.args[0]
         if isinstance(first, ast.JoinedStr):  # f-string en message
             if style == "logging":
                 fautes.append(f"{node.lineno}: f-string en message (attendu %s paresseux)")
@@ -274,6 +282,11 @@ class TestDetecteurs(unittest.TestCase):
         """Loguru : champ manquant et %s détectés ; f-string et format correct acceptés."""
         source = 'logger.info("a {} b {}", x)\nlogger.info("a %s", x)\nlogger.info("ok {}", x)\nlogger.info(f"{x}")\n'
         self.assertEqual([e.split(":")[0] for e in erreurs_de_format(ast.parse(source))], ["1", "2"])
+
+    def test_format_message_traduit(self):
+        """Message enveloppé dans _() (issue #38) : son format reste contrôlé."""
+        source = 'logger.info(_("a {} b {}"), x)\nlogger.info(_("ok {}"), x)\nlogger.info(_("c={c}"), c=1)\n'
+        self.assertEqual([e.split(":")[0] for e in erreurs_de_format(ast.parse(source))], ["1"])
 
     def test_format_logging(self):
         """Logging : %s paresseux accepté, f-string et {} refusés."""

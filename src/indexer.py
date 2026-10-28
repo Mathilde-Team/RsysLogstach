@@ -27,6 +27,7 @@ from opensearchpy.exceptions import NotFoundError, OpenSearchException, RequestE
 
 from dlq import LocalDeadLetterQueue
 from fingerprint import compute_fingerprint
+from i18n import _
 from templates import CompiledTemplate, compile_template, render
 from tracing import traced
 
@@ -229,13 +230,13 @@ class OpenSearchIndexer:
             await self._client.index(index=resolved_index, body=doc, id=resolved_id)
             return SendOutcome.INDEXED
         except _PERMANENT_ERRORS as exc:
-            logger.warning("Indexation OpenSearch échouée définitivement erreur={error}", error=exc)
+            logger.warning(_("Indexation OpenSearch échouée définitivement erreur={error}"), error=exc)
             if self._dlq is not None:
                 await self._dlq.write(doc, index=resolved_index, error=str(exc))
                 return SendOutcome.DEAD_LETTERED
             return SendOutcome.RETRYABLE
         except OpenSearchException as exc:
-            logger.warning("Indexation OpenSearch échouée erreur={error}", error=exc)
+            logger.warning(_("Indexation OpenSearch échouée erreur={error}"), error=exc)
             return SendOutcome.RETRYABLE
 
     @traced
